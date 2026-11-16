@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VertiGrow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --paper: #EEF2EA;
+    --surface: #F8FAF5;
+    --ink: #1D2B22;
+    --ink-soft: #5B6B60;
+    --rule: #CBD5C6;
+    --leaf: #2F5D46;
+    --water: #3A7CA5;
+    --water-deep: #2C6488;
+    --npk-a: #C28B2C;
+    --npk-b: #8C4A6B;
+    --ok: #2F7A4F;
+    --warn: #A8841A;
+    --bad: #B8432F;
+    --display: "Bricolage Grotesque", "Segoe UI", sans-serif;
+    --text: "Instrument Sans", "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 15px/1.5 var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1120px; margin: 0 auto; padding: 28px 24px 48px; }
+
+  /* ---------- header ---------- */
+  .top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 24px;
+  }
+  .brand { font: 700 30px/1 var(--display); letter-spacing: -0.02em; color: var(--leaf); margin: 0; }
+  .brand small { font: 500 15px var(--text); color: var(--ink-soft); letter-spacing: 0; margin-left: 10px; }
+  .link-state { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-soft); }
+  .link-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
+  .link-dot.on { background: var(--ok); }
+
+  .notice {
+    display: none;
+    margin-bottom: 20px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--warn);
+    background: #F6F0DA;
+    font-size: 14px;
+  }
+
+  /* ---------- refill reminders ---------- */
+  .reminders { display: none; margin: -6px 0 24px; }
+  .reminders.show { display: grid; gap: 8px; }
+  .reminder { display: grid; grid-template-columns: 6px 1fr; gap: 14px; align-items: stretch; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .reminder .mark { background: var(--water); }
+  .reminder .mark.a { background: var(--npk-a); }
+  .reminder .mark.b { background: var(--npk-b); }
+  .reminder div:last-child { padding: 10px 14px 10px 0; }
+  .reminder strong { font-weight: 600; }
+  .reminder span { color: var(--ink-soft); }
+  .reminder.urgent { border-color: var(--bad); }
+  .reminder.urgent strong { color: var(--bad); }
+
+  /* ---------- system + health ---------- */
+  .system { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 28px; align-items: stretch; }
+
+  .rig {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 12px 12px 4px;
+  }
+  .rig svg { display: block; width: 100%; height: auto; }
+
+  .rig text { font-family: var(--text); fill: var(--ink); }
+  .rig .t-name { font-size: 14px; font-weight: 600; }
+  .rig .t-meta { font-size: 12px; fill: var(--ink-soft); }
+  .rig .t-big  { font-family: var(--display); font-size: 34px; font-weight: 700; fill: #fff; }
+  .rig .t-mid  { font-family: var(--display); font-size: 20px; font-weight: 700; }
+  .rig .vessel { fill: none; stroke: var(--ink); stroke-width: 2; }
+  .rig .pipe { fill: none; stroke: #9AA79E; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+  .rig .flow { fill: none; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 8 10; opacity: 0; }
+  .rig .flow.on { opacity: 1; animation: flow 0.7s linear infinite; }
+  .rig .beam { stroke: var(--ink-soft); stroke-width: 1; stroke-dasharray: 2 4; }
+  .rig .sensor { fill: var(--ink); }
+  .rig .pump { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+  .rig .pump-a.on { fill: var(--npk-a); }
+  .rig .pump-b.on { fill: var(--npk-b); }
+  .rig .liquid { transition: y 0.9s ease, height 0.9s ease; }
+  .rig .na { fill: url(#hatch); }
+  @keyframes flow { to { stroke-dashoffset: -18; } }
+
+  .health { display: flex; flex-direction: column; gap: 22px; padding-top: 4px; }
+  .health h2, .controls h2, .assistant h2 { font: 700 20px/1.2 var(--display); margin: 0; letter-spacing: -0.01em; }
+
+  .verdict { font: 700 34px/1.05 var(--display); letter-spacing: -0.02em; margin: 6px 0 4px; }
+  .verdict.ok { color: var(--ok); }
+  .verdict.warn { color: var(--warn); }
+  .verdict.bad { color: var(--bad); }
+  .verdict-why { color: var(--ink-soft); margin: 0; max-width: 40ch; }
+
+  .meter { display: grid; grid-template-columns: 1fr auto; row-gap: 8px; align-items: baseline; }
+  .meter-name { font-weight: 600; }
+  .meter-value { font: 700 28px/1 var(--display); font-variant-numeric: tabular-nums; text-align: right; }
+  .meter-value .unit { font: 500 13px var(--text); color: var(--ink-soft); margin-left: 4px; }
+  .scale { grid-column: 1 / -1; position: relative; height: 10px; border-radius: 5px; background: #DCE3D7; }
+  .band { position: absolute; top: 0; bottom: 0; background: #A9CDB4; border-radius: 5px; }
+  .needle { position: absolute; top: -5px; width: 3px; height: 20px; background: var(--ink); border-radius: 2px; transform: translateX(-50%); transition: left 0.6s ease; }
+  .scale-ends { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); }
+  .meter.off .meter-value { color: var(--ink-soft); }
+  .meter.off .needle { display: none; }
+
+  .added { border-top: 1px solid var(--rule); padding-top: 18px; }
+  .added h3 { font: 600 15px var(--text); margin: 0 0 10px; }
+  .added-totals { display: flex; gap: 28px; }
+  .added-totals div { display: flex; align-items: baseline; gap: 8px; }
+  .added-totals b { font: 700 24px var(--display); font-variant-numeric: tabular-nums; }
+  .added-totals small { color: var(--ink-soft); font-size: 13px; }
+  .dose-log { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--ink-soft); }
+  .dose-log li { display: grid; grid-template-columns: 70px 14px 1fr auto; gap: 8px; align-items: center; padding: 3px 0; }
+  .dose-log .swatch { width: 10px; height: 10px; }
+  .dose-log .who { text-align: right; }
+
+  /* ---------- lower row ---------- */
+  .lower { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--rule); }
+
+  .mode { display: inline-flex; margin: 14px 0 6px; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
+  .mode button { border: 0; background: transparent; color: var(--ink); font: 600 14px var(--text); padding: 9px 20px; cursor: pointer; }
+  .mode button + button { border-left: 1px solid var(--ink); }
+  .mode button.active { background: var(--ink); color: var(--paper); }
+  .mode-state { font-size: 14px; color: var(--ink-soft); margin: 0 0 18px; min-height: 21px; }
+
+  .dose { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .dose:first-of-type { border-top: 1px solid var(--rule); }
+  .dose-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; }
+  .swatch.a { background: var(--npk-a); }
+  .swatch.b { background: var(--npk-b); }
+  .ml-hint { font-weight: 400; font-size: 13px; color: var(--ink-soft); }
+  .running { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--ink); color: var(--paper); display: none; }
+  .running.on { display: inline-block; }
+
+  .secs { display: flex; align-items: center; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  .secs button { width: 32px; height: 36px; border: 0; background: transparent; font: 600 18px var(--text); color: var(--ink); cursor: pointer; }
+  .secs input { width: 40px; border: 0; background: transparent; text-align: center; font: 600 15px var(--text); color: var(--ink); -moz-appearance: textfield; }
+  .secs input::-webkit-outer-spin-button, .secs input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .secs span { font-size: 13px; color: var(--ink-soft); padding-right: 10px; }
+
+  .btn { border: 0; border-radius: 8px; font: 600 14px var(--text); padding: 10px 16px; cursor: pointer; background: var(--leaf); color: #fff; }
+  .btn:hover { background: #244A37; }
+  .btn.stop { width: 100%; margin-top: 18px; padding: 13px; background: var(--bad); font-size: 15px; }
+  .btn.stop:hover { background: #9A3626; }
+  .btn.quiet { background: transparent; color: var(--leaf); border: 1px solid var(--leaf); }
+  .btn.quiet:hover { background: #E2EADF; }
+  .control-note { font-size: 13px; color: var(--ink-soft); margin: 10px 0 0; min-height: 20px; }
+
+  .ask { display: flex; gap: 10px; margin-top: 14px; }
+  .ask input { flex: 1; min-width: 0; padding: 11px 14px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font: 400 15px var(--text); color: var(--ink); }
+  .answer { margin-top: 14px; padding: 14px 16px; background: var(--surface); border-left: 3px solid var(--leaf); min-height: 72px; white-space: pre-wrap; color: var(--ink); }
+  .answer.empty { color: var(--ink-soft); }
+  .report { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-soft); }
+
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--water); outline-offset: 2px; }
+
+  /* ---------- pop-up ---------- */
+  .modal-bg { position: fixed; inset: 0; background: rgba(29, 43, 34, 0.45); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 20; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--surface); border-radius: 12px; padding: 22px; width: 100%; max-width: 360px; }
+  .modal h3 { font: 700 20px var(--display); margin: 0 0 6px; }
+  .modal p { margin: 0 0 16px; color: var(--ink-soft); }
+  .modal input { width: 100%; padding: 11px; margin-bottom: 14px; border: 1px solid var(--rule); border-radius: 8px; font: 600 22px var(--display); letter-spacing: 0.4em; text-align: center; background: #fff; color: var(--ink); }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+  @media (max-width: 860px) {
+    .system, .lower { grid-template-columns: 1fr; }
+    .lower { gap: 32px; }
+  }
+  @media (max-width: 480px) {
+    .page { padding: 20px 16px 40px; }
+    .dose { grid-template-columns: 1fr auto; }
+    .dose .btn { grid-column: 1 / -1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rig .flow.on { animation: none; }
+    .rig .liquid, .needle { transition: none; }
+  }
+</style>
+</head>
+
+<body>
+<div class="page">
+
+  <header class="top">
+    <h1 class="brand">VertiGrow<small>Smart hydroponics</small></h1>
+    <div class="link-state"><span class="link-dot" id="onlineDot"></span><span id="onlineText">Waiting for the Arduino</span></div>
+  </header>
+
+  <div class="notice" id="storageBanner">
+    The database isn't connected, so readings can reset and the Excel report only holds the latest one.
+    Connect Upstash Redis under Storage in Vercel to fix this.
+  </div>
+
+  <div class="reminders" id="reminders" role="status" aria-live="polite"></div>
+
+  <section class="system">
+    <!-- live drawing of the rig -->
+    <div class="rig" aria-label="Tank levels and pumps">
+      <svg viewBox="0 0 640 360" role="img">
+        <defs>
+          <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="8" height="8" fill="#E3E8DF" />
+            <line x1="0" y1="0" x2="0" y2="8" stroke="#C3CCBF" stroke-width="3" />
+          </pattern>
+          <clipPath id="clipA"><rect x="42" y="72" width="96" height="140" rx="6" /></clipPath>
+          <clipPath id="clipB"><rect x="502" y="72" width="96" height="140" rx="6" /></clipPath>
+          <clipPath id="clipM"><rect x="202" y="152" width="236" height="160" rx="8" /></clipPath>
+        </defs>
+
+        <!-- pipes -->
+        <path class="pipe" d="M90 212 V262 H160 M188 262 H196 V100 H284 V146" />
+        <path class="pipe" d="M550 212 V262 H480 M452 262 H444 V100 H356 V146" />
+        <path class="flow" id="flowA" stroke="#C28B2C" d="M90 212 V262 H160 M188 262 H196 V100 H284 V146" />
+        <path class="flow" id="flowB" stroke="#8C4A6B" d="M550 212 V262 H480 M452 262 H444 V100 H356 V146" />
+
+        <!-- ultrasonic sensors + beams -->
+        <g>
+          <rect class="sensor" x="72" y="48" width="36" height="12" rx="3" />
+          <line class="beam" id="beamA" x1="90" y1="60" x2="90" y2="140" />
+          <rect class="sensor" x="532" y="48" width="36" height="12" rx="3" />
+          <line class="beam" id="beamB" x1="550" y1="60" x2="550" y2="140" />
+          <rect class="sensor" x="302" y="124" width="36" height="12" rx="3" />
+          <line class="beam" id="beamM" x1="320" y1="136" x2="320" y2="200" />
+        </g>
+
+        <!-- NPK A bottle -->
+        <g clip-path="url(#clipA)">
+          <rect id="aFill" class="liquid" x="42" y="212" width="96" height="0" fill="#C28B2C" opacity="0.85" />
+        </g>
+        <rect class="vessel" x="42" y="72" width="96" height="140" rx="6" />
+        <text class="t-mid" id="aPct" x="90" y="150" text-anchor="middle">--</text>
+        <text class="t-name" x="90" y="300" text-anchor="middle">NPK A</text>
+        <text class="t-meta" id="aCm" x="90" y="318" text-anchor="middle">16.4 cm tank</text>
+
+        <!-- NPK B bottle -->
+        <g clip-path="url(#clipB)">
+          <rect id="bFill" class="liquid" x="502" y="212" width="96" height="0" fill="#8C4A6B" opacity="0.85" />
+        </g>
+        <rect class="vessel" x="502" y="72" width="96" height="140" rx="6" />
+        <text class="t-mid" id="bPct" x="550" y="150" text-anchor="middle">--</text>
+        <text class="t-name" x="550" y="300" text-anchor="middle">NPK B</text>
+        <text class="t-meta" id="bCm" x="550" y="318" text-anchor="middle">16.4 cm tank</text>
+
+        <!-- main tub -->
+        <g clip-path="url(#clipM)">
+          <rect id="mainFill" class="liquid" x="202" y="312" width="236" height="0" fill="#3A7CA5" />
+        </g>
+        <path class="vessel" d="M202 152 V304 Q202 312 210 312 H430 Q438 312 438 304 V152" />
+        <line x1="222" y1="146" x2="222" y2="292" stroke="#1D2B22" stroke-width="2" />
+        <line x1="418" y1="146" x2="418" y2="292" stroke="#1D2B22" stroke-width="2" />
+        <text class="t-meta" x="222" y="140" text-anchor="middle">pH</text>
+        <text class="t-meta" x="418" y="140" text-anchor="middle">TDS</text>
+        <text class="t-big" id="mainPct" x="320" y="262" text-anchor="middle">--</text>
+        <text class="t-name" x="320" y="338" text-anchor="middle">Main tank</text>
+        <text class="t-meta" id="mainCm" x="320" y="356" text-anchor="middle">22 cm tank</text>
+
+        <!-- pumps -->
+        <circle class="pump pump-a" id="lightA" cx="174" cy="262" r="14" />
+        <text class="t-meta" x="174" y="292" text-anchor="middle">Pump A</text>
+        <circle class="pump pump-b" id="lightB" cx="466" cy="262" r="14" />
+        <text class="t-meta" x="466" y="292" text-anchor="middle">Pump B</text>
+      </svg>
+    </div>
+
+    <!-- water health -->
+    <div class="health">
+      <div>
+        <h2>Water health</h2>
+        <div class="verdict" id="healthValue">Waiting</div>
+        <p class="verdict-why" id="healthSub">No reading from the Arduino yet.</p>
+      </div>
+
+      <div class="meter" id="phMeter">
+        <span class="meter-name">pH</span>
+        <span class="meter-value" id="phValue">--</span>
+        <div class="scale"><div class="band" id="phBand"></div><div class="needle" id="phNeedle"></div></div>
+        <div class="scale-ends"><span>4</span><span id="phSub">target 5.8 to 6.5</span><span>8</span></div>
+      </div>
+
+      <div class="meter" id="tdsMeter">
+        <span class="meter-name">Nutrients (TDS)</span>
+        <span class="meter-value" id="tdsValue">--</span>
+        <div class="scale"><div class="band" id="tdsBand"></div><div class="needle" id="tdsNeedle"></div></div>
+        <div class="scale-ends"><span>0</span><span id="tdsSub">target 800 to 1200 ppm</span><span>2000</span></div>
+      </div>
+
+      <div class="added">
+        <h3>Nutrients added today</h3>
+        <div class="added-totals">
+          <div><span class="swatch a"></span><b id="addedA">0</b><small>ml NPK A</small></div>
+          <div><span class="swatch b"></span><b id="addedB">0</b><small>ml NPK B</small></div>
+        </div>
+        <ul class="dose-log" id="doseLog"><li style="display:block">No doses yet today.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="lower">
+    <!-- dosing -->
+    <div class="controls">
+      <h2>Nutrient dosing</h2>
+      <div class="mode" role="group" aria-label="Dosing mode">
+        <button id="btnManual" onclick="setMode('manual')">Manual</button>
+        <button id="btnAuto" onclick="setMode('auto')">Auto</button>
+      </div>
+      <p class="mode-state" id="autoStatus"></p>
+
+      <div class="dose">
+        <div class="dose-name"><span class="swatch a"></span>NPK A <span class="ml-hint" id="mlA"></span> <span class="running" id="runA">Running</span></div>
+        <div class="secs">
+          <button aria-label="Less" onclick="nudge('A', -1)">−</button>
+          <input id="secA" type="number" min="1" max="30" value="5" aria-label="Seconds for NPK A" />
+          <span>sec</span>
+          <button aria-label="More" onclick="nudge('A', 1)">+</button>
+        </div>
+        <button class="btn" id="doseA" onclick="dose('A')">Dose A</button>
+      </div>
+
+      <div class="dose">
+        <div class="dose-name"><span class="swatch b"></span>NPK B <span class="ml-hint" id="mlB"></span> <span class="running" id="runB">Running</span></div>
+        <div class="secs">
+          <button aria-label="Less" onclick="nudge('B', -1)">−</button>
+          <input id="secB" type="number" min="1" max="30" value="5" aria-label="Seconds for NPK B" />
+          <span>sec</span>
+          <button aria-label="More" onclick="nudge('B', 1)">+</button>
+        </div>
+        <button class="btn" id="doseB" onclick="dose('B')">Dose B</button>
+      </div>
+
+      <button class="btn stop" onclick="stopPumps()">Stop all pumps</button>
+      <p class="control-note" id="controlNote">The Arduino picks up a command within about 5 seconds.</p>
+    </div>
+
+    <!-- assistant -->
+    <div class="assistant">
+      <h2>Ask VertiGrow</h2>
+      <div class="ask">
+        <input id="aiInput" placeholder="How are my plants doing?" />
+        <button class="btn" onclick="sendAI()">Ask</button>
+      </div>
+      <div class="answer empty" id="aiReply">Answers use the live readings above.</div>
+      <div class="report">
+        <span>Every reading, plus every nutrient dose in ml</span>
+        <button class="btn quiet" onclick="downloadExcel()">Download Excel report</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">VertiGrow</h3>
+    <p id="modalText"></p>
+    <input id="modalInput" type="password" inputmode="numeric" maxlength="8" />
+    <div class="modal-btns">
+      <button class="btn quiet" id="modalCancel">Cancel</button>
+      <button class="btn" id="modalOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* Same targets as the Arduino code */
+  const TARGET = { phMin: 5.8, phMax: 6.5, tdsMin: 800, tdsMax: 1200 };
+  const PH_SCALE = [4, 8], TDS_SCALE = [0, 2000];
+  const LOW_NUTRIENT_PCT = 10, LOW_MAIN_PCT = 20;           // below these the Arduino won't pump / auto-dose
+  const DEFAULT_REMIND_MAIN = 30, DEFAULT_REMIND_NPK = 20;  // refill reminders (Arduino can override)
+  const DEFAULT_RATE = 1.5;                                 // ml per second if the Arduino hasn't said
+
+  /* drawing geometry (matches the SVG) */
+  const VESSEL = {
+    a:    { top: 72,  height: 140, beam: "beamA" },
+    b:    { top: 72,  height: 140, beam: "beamB" },
+    main: { top: 152, height: 160, beam: "beamM" }
+  };
+
+  let latest = {};
+  let currentMode = "manual";
+  const $ = id => document.getElementById(id);
+
+  function getPin() { try { return localStorage.getItem("vg_pin") || ""; } catch (e) { return ""; } }
+  function savePin(p) { try { localStorage.setItem("vg_pin", p); } catch (e) {} }
+
+  /* in-page pop-up */
+  function ask(title, text, withInput) {
+    return new Promise(resolve => {
+      $("modalTitle").innerText = title;
+      $("modalText").innerText = text;
+      const inp = $("modalInput");
+      inp.style.display = withInput ? "block" : "none";
+      inp.value = "";
+      $("modalBg").classList.add("show");
+      setTimeout(() => (withInput ? inp : $("modalOk")).focus(), 50);
+      const done = v => {
+        $("modalBg").classList.remove("show");
+        $("modalOk").onclick = $("modalCancel").onclick = inp.onkeydown = null;
+        resolve(v);
+      };
+      $("modalOk").onclick = () => done(withInput ? inp.value.trim() : true);
+      $("modalCancel").onclick = () => done(withInput ? null : false);
+      inp.onkeydown = e => { if (e.key === "Enter") $("modalOk").click(); };
+    });
+  }
+
+  /* ---------- water health ---------- */
+  function verdict(d) {
+    const phOn = d.phOk !== false, tdsOn = d.tdsOk !== false;
+    if (!phOn && !tdsOn) return ["No readings", "", "Both pH and TDS sensors are unavailable. Check their wiring."];
+
+    const issues = [];
+    let level = "ok";
+    const worse = l => { if (l === "bad" || (l === "warn" && level === "ok")) level = l; };
+
+    if (phOn) {
+      if (d.ph > TARGET.phMax) { issues.push("pH is high"); worse(d.ph > 6.8 ? "bad" : "warn"); }
+      if (d.ph < TARGET.phMin) { issues.push("pH is low"); worse(d.ph < 5.5 ? "bad" : "warn"); }
+    }
+    if (tdsOn) {
+      if (d.tds < TARGET.tdsMin) { issues.push("nutrients are low"); worse(d.tds < 600 ? "bad" : "warn"); }
+      if (d.tds > TARGET.tdsMax) { issues.push("nutrients are too strong"); worse(d.tds > 1400 ? "bad" : "warn"); }
+    }
+
+    const only = !phOn ? " Judged on TDS only, the pH sensor is unavailable." :
+                 !tdsOn ? " Judged on pH only, the TDS sensor is unavailable." : "";
+    if (!issues.length) return ["Healthy", "ok", "pH and nutrients are both in range." + only];
+    const sentence = issues.join(" and ");
+    return [level === "bad" ? "Unhealthy" : "Needs attention", level,
+            sentence.charAt(0).toUpperCase() + sentence.slice(1) + "." + only];
+  }
+
+  function placeOnScale(needleId, bandId, value, scale, lo, hi) {
+    const pct = v => Math.max(0, Math.min(100, (v - scale[0]) / (scale[1] - scale[0]) * 100));
+    $(bandId).style.left = pct(lo) + "%";
+    $(bandId).style.width = (pct(hi) - pct(lo)) + "%";
+    $(needleId).style.left = pct(value) + "%";
+  }
+
+  /* ---------- drawing ---------- */
+  function amountText(key, d) {
+    if (key === "main") return d.mainL != null ? "about " + d.mainL + " L of water" : null;
+    const ml = key === "a" ? d.aMl : d.bMl;
+    return ml != null ? "about " + Math.round(ml) + " ml left" : null;
+  }
+
+  function showVessel(key, ok, pct, cm, lowAt, amount) {
+    const v = VESSEL[key];
+    const fill = $(key + "Fill");
+    const beam = $(v.beam);
+    if (!ok || pct === null || pct === undefined) {
+      fill.setAttribute("y", v.top);
+      fill.setAttribute("height", v.height);
+      fill.classList.add("na");
+      $(key + "Pct").textContent = "n/a";
+      $(key + "Cm").textContent = "Level sensor not reading";
+      beam.setAttribute("y2", Number(beam.getAttribute("y1")) + 12);
+      return;
+    }
+    fill.classList.remove("na");
+    const p = Math.max(0, Math.min(100, pct));
+    const h = v.height * p / 100;
+    const surface = v.top + v.height - h;
+    fill.setAttribute("y", surface);
+    fill.setAttribute("height", h);
+    beam.setAttribute("y2", Math.max(Number(beam.getAttribute("y1")) + 4, surface));
+    const pctEl = $(key + "Pct");
+    pctEl.textContent = Math.round(p) + "%";
+    if (key !== "main") pctEl.setAttribute("y", Math.min(v.top + v.height - 10, Math.max(v.top + 26, surface + 26)));
+    pctEl.style.fill = key === "main" ? (p < 25 ? "#1D2B22" : "#fff") : (surface < v.top + v.height - 30 ? "#fff" : "#1D2B22");
+    $(key + "Cm").textContent = amount || ((cm ?? "--") + " cm of liquid");
+    $(key + "Cm").style.fill = p < lowAt ? "#B8432F" : "";
+  }
+
+  /* ---------- refill reminders ---------- */
+  function showReminders(d, remMain, remNpk) {
+    const list = [];
+    if (d.mainOk && d.mainPct != null && d.mainPct < remMain) {
+      const urgent = d.mainPct < LOW_MAIN_PCT;
+      list.push({ mark: "", urgent,
+        title: "Top up the main tank with water.",
+        detail: (d.mainL != null ? "About " + d.mainL + " L left (" : "(") + Math.round(d.mainPct) + "% full)." +
+                (urgent ? " Auto dosing is paused until it's refilled." : "") });
+    }
+    [["a", "A"], ["b", "B"]].forEach(([k, P]) => {
+      const ok = d[k + "Ok"], pct = d[k + "Pct"], ml = d[k + "Ml"];
+      if (ok && pct != null && pct < remNpk) {
+        const urgent = pct < LOW_NUTRIENT_PCT;
+        list.push({ mark: k, urgent,
+          title: "Refill NPK " + P + ".",
+          detail: (ml != null ? "About " + Math.round(ml) + " ml left (" : "(") + Math.round(pct) + "% full)." +
+                  (urgent ? " Pump " + P + " is locked so it can't run dry." : "") });
+      }
+    });
+
+    const box = $("reminders");
+    box.innerHTML = "";
+    list.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "reminder" + (r.urgent ? " urgent" : "");
+      const mark = document.createElement("div");
+      mark.className = "mark " + r.mark;
+      const text = document.createElement("div");
+      const t = document.createElement("strong"); t.textContent = r.title + " ";
+      const dt = document.createElement("span"); dt.textContent = r.detail;
+      text.append(t, dt);
+      row.append(mark, text);
+      box.append(row);
+    });
+    box.classList.toggle("show", list.length > 0);
+  }
+
+  /* ---------- nutrients added ---------- */
+  function showAdded(d) {
+    const t = d.doseToday || { A: 0, B: 0 };
+    $("addedA").textContent = fmtMl(t.A);
+    $("addedB").textContent = fmtMl(t.B);
+    const log = $("doseLog");
+    log.innerHTML = "";
+    const recent = (d.recentDoses || []).slice(0, 4);
+    if (!recent.length) {
+      const li = document.createElement("li"); li.style.display = "block";
+      li.textContent = "No doses recorded yet.";
+      log.append(li);
+      return;
+    }
+    recent.forEach(x => {
+      const li = document.createElement("li");
+      const time = document.createElement("span");
+      time.textContent = new Date(x.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const sw = document.createElement("span"); sw.className = "swatch " + x.pump.toLowerCase();
+      const what = document.createElement("span"); what.textContent = "NPK " + x.pump + ", " + fmtMl(x.ml) + " ml";
+      const who = document.createElement("span"); who.className = "who"; who.textContent = x.auto ? "auto" : "manual";
+      li.append(time, sw, what, who);
+      log.append(li);
+    });
+  }
+
+  function fmtMl(v) { v = Number(v) || 0; return v >= 100 ? Math.round(v) : Math.round(v * 10) / 10; }
+
+  function updateMlHints() {
+    ["A", "B"].forEach(P => {
+      const sec = parseInt($("sec" + P).value, 10) || 0;
+      const rate = latest["rate" + P] ?? DEFAULT_RATE;
+      $("ml" + P).textContent = "about " + fmtMl(sec * rate) + " ml";
+    });
+  }
+
+  function showMode(mode) {
+    currentMode = mode;
+    $("btnManual").classList.toggle("active", mode === "manual");
+    $("btnAuto").classList.toggle("active", mode === "auto");
+  }
+
+  function timeText(iso) {
+    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }
+
+  async function updateDashboard() {
+    try {
+      const res = await fetch("/api/data", { cache: "no-store" });
+      const d = await res.json();
+      latest = d;
+
+      $("onlineDot").classList.toggle("on", !!d.online);
+      $("onlineText").innerText = !d.time ? "Waiting for the Arduino"
+        : d.online ? "Arduino online, updated " + timeText(d.time)
+        : "Arduino offline since " + timeText(d.time);
+
+      $("storageBanner").style.display = d.storage === "memory" ? "block" : "none";
+
+      /* health */
+      const phOn = d.phOk !== false, tdsOn = d.tdsOk !== false;
+      if (d.time) {
+        const [label, cls, why] = verdict(d);
+        $("healthValue").innerText = label;
+        $("healthValue").className = "verdict " + cls;
+        $("healthSub").innerText = why;
+      }
+
+      $("phMeter").classList.toggle("off", !(d.time && phOn));
+      $("phValue").innerText = d.time && phOn ? Number(d.ph).toFixed(2) : "--";
+      $("phSub").innerText = d.time && !phOn ? "sensor unavailable" : "target 5.8 to 6.5";
+      placeOnScale("phNeedle", "phBand", Number(d.ph), PH_SCALE, TARGET.phMin, TARGET.phMax);
+
+      $("tdsMeter").classList.toggle("off", !(d.time && tdsOn));
+      $("tdsValue").innerHTML = d.time && tdsOn ? Math.round(d.tds) + '<span class="unit">ppm</span>' : "--";
+      $("tdsSub").innerText = d.time && !tdsOn ? "sensor unavailable" : "target 800 to 1200 ppm";
+      placeOnScale("tdsNeedle", "tdsBand", Number(d.tds), TDS_SCALE, TARGET.tdsMin, TARGET.tdsMax);
+
+      /* tanks (the original Arduino sketch sends no levels, so they show n/a) */
+      const remMain = d.remindMain ?? DEFAULT_REMIND_MAIN, remNpk = d.remindNpk ?? DEFAULT_REMIND_NPK;
+      showVessel("main", d.mainOk, d.mainPct, d.mainCm, remMain, amountText("main", d));
+      showVessel("a", d.aOk, d.aPct, d.aCm, remNpk, amountText("a", d));
+      showVessel("b", d.bOk, d.bPct, d.bCm, remNpk, amountText("b", d));
+      showReminders(d, remMain, remNpk);
+      showAdded(d);
+      updateMlHints();
+
+      /* pumps */
+      const aOn = !!d.pumpA && d.online, bOn = !!d.pumpB && d.online;
+      $("lightA").classList.toggle("on", aOn);
+      $("lightB").classList.toggle("on", bOn);
+      $("flowA").classList.toggle("on", aOn);
+      $("flowB").classList.toggle("on", bOn);
+      $("runA").classList.toggle("on", aOn);
+      $("runB").classList.toggle("on", bOn);
+
+      /* mode */
+      showMode(d.mode || "manual");
+      let st = "";
+      if (d.online && d.mode !== d.deviceMode && d.deviceMode) st = "Switching the Arduino to " + d.mode + "…";
+      else if (d.autoStatus) st = d.mode === "auto" ? "Auto: " + d.autoStatus : "Pumps run only when you press Dose.";
+      if (d.pendingCmd) st += (st ? " " : "") + "A command is waiting for the Arduino.";
+      $("autoStatus").innerText = st;
+    } catch (e) {
+      console.error("Dashboard error", e);
+    }
+  }
+
+  /* ---------- controls ---------- */
+  function nudge(pump, by) {
+    const el = $("sec" + pump);
+    el.value = Math.max(1, Math.min(30, (parseInt(el.value, 10) || 5) + by));
+    updateMlHints();
+  }
+  ["secA", "secB"].forEach(id => $(id).addEventListener("input", updateMlHints));
+
+  async function sendCommand(body) {
+    const note = $("controlNote");
+    try {
+      let res = await fetch("/api/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, pin: getPin() })
+      });
+      let data = await res.json();
+
+      if (res.status === 401 && data.error === "need_pin") {
+        const p = await ask("Enter PIN", "Pump controls are protected. Enter your VertiGrow PIN.", true);
+        if (!p) return null;
+        res = await fetch("/api/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, pin: p })
+        });
+        data = await res.json();
+        if (res.status === 401) { note.innerText = "That PIN didn't match. Try again."; return null; }
+        savePin(p);
+      }
+
+      if (!data.ok) { note.innerText = "Not sent: " + (data.error || "the server refused the command") + "."; return null; }
+      return data;
+    } catch (e) {
+      note.innerText = "Not sent: the server couldn't be reached. Check your internet.";
+      return null;
+    }
+  }
+
+  async function setMode(mode) {
+    if (mode === currentMode) return;
+    if (mode === "auto" && !(await ask("Turn on auto dosing?",
+        "The Arduino will add nutrients by itself based on pH, TDS and the main tank level. Only turn this on after calibrating the sensors and testing both pumps.", false))) return;
+    const r = await sendCommand({ action: "mode", mode });
+    if (r) { showMode(mode); $("controlNote").innerText = mode === "auto" ? "Auto dosing is on." : "Auto dosing is off."; }
+  }
+
+  async function dose(pump) {
+    const sec = parseInt($("sec" + pump).value, 10);
+    if (!sec || sec < 1 || sec > 30) { $("controlNote").innerText = "Choose between 1 and 30 seconds."; return; }
+
+    const lvl = pump === "A" ? latest.aPct : latest.bPct;
+    const ok = pump === "A" ? latest.aOk : latest.bOk;
+    if (ok && lvl !== null && lvl < LOW_NUTRIENT_PCT) {
+      $("controlNote").innerText = "NPK " + pump + " is almost empty. Refill it before dosing.";
+      return;
+    }
+    if (!latest.online && !(await ask("The Arduino is offline",
+        "Send the dose anyway? It will run when the Arduino reconnects.", false))) return;
+
+    const r = await sendCommand({ action: "dose", pump, seconds: sec });
+    const rate = latest["rate" + pump] ?? DEFAULT_RATE;
+    if (r) $("controlNote").innerText = "Dose " + pump + " sent: " + sec + " seconds, about " + fmtMl(sec * rate) + " ml.";
+  }
+
+  async function stopPumps() {
+    const r = await sendCommand({ action: "stop" });
+    if (r) $("controlNote").innerText = "Stop sent. Pumps switch off within about 5 seconds.";
+  }
+
+  /* ---------- assistant ---------- */
+  async function sendAI() {
+    const msg = $("aiInput").value.trim();
+    if (!msg) return;
+    const out = $("aiReply");
+    out.classList.remove("empty");
+    out.innerText = "Thinking…";
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msg,
+          sensorData: {
+            ph: latest.phOk === false ? "unavailable" : latest.ph,
+            tds: latest.tdsOk === false ? "unavailable" : latest.tds,
+            mainPct: latest.mainOk ? latest.mainPct : null,
+            aPct: latest.aOk ? latest.aPct : null,
+            bPct: latest.bOk ? latest.bPct : null,
+            mainL: latest.mainL, aMl: latest.aMl, bMl: latest.bMl,
+            addedTodayMl: latest.doseToday,
+            mode: latest.mode
+          }
+        })
+      });
+      const data = await res.json();
+      out.innerText = data.reply || "No answer came back. Try asking again.";
+    } catch (e) {
+      out.innerText = "The assistant couldn't be reached. Check your internet and try again.";
+    }
+  }
+  $("aiInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAI(); });
+
+  function downloadExcel() { window.location.href = "/api/export"; }
+
+  updateMlHints();
+  updateDashboard();
+  setInterval(updateDashboard, 3000);
+</script>
+</body>
+</html>
