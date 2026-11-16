@@ -1,15 +1,20 @@
 // /api/data.js
-// POST <- Arduino sends all readings every 5 s, gets back { mode, cmd }
-// GET  -> dashboard reads latest readings + mode + pending command
+// POST <- Arduino sends readings every 15 s, gets back { mode, cmd }
+// GET  -> dashboard reads latest reading + mode + doses
 //
+// Database use per call (free plan = 500,000 commands/month):
+//   Arduino POST: 2 commands (+2 every 2 minutes for history, +a few when a dose finished)
+//   Dashboard GET: 3 commands
 // Works with the original Arduino sketch too (it only sends ph + tds).
 
-import { getJSON, setJSON, del, pushHistory, getHistory, readBody, usingDatabase, KEYS } from "./_store.js";
+import { pipeline, parse, parseList, str, defaultCtl, readBody, usingDatabase, KEYS } from "./_store.js";
 
 const istDay = iso => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-
 const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v)) ? null : Number(v));
 const bool = v => v === true || v === "true" || v === 1;
+
+const HISTORY_MAX = 5000;   // ~1 week at one reading every 2 minutes
+const DOSES_MAX = 1000;
 
 export default async function handler(req, res) {
   try {
@@ -41,48 +46,57 @@ export default async function handler(req, res) {
         lastCmdId: num(b.lastCmdId)
       };
 
-      await setJSON(KEYS.latest, record);
-      await pushHistory(KEYS.history, record);
+      // the original sketch doesn't send "hist", so keep every reading from it
+      const saveHistory = b.hist === undefined ? true : bool(b.hist);
+      const doses = Array.isArray(b.doses) ? b.doses.slice(0, 10) : [];
+
+      const cmds = [
+        ["SET", KEYS.latest, str(record)],
+        ["GET", KEYS.ctl]
+      ];
+      if (saveHistory) cmds.push(["LPUSH", KEYS.history, str(record)], ["LTRIM", KEYS.history, "0", String(HISTORY_MAX - 1)]);
+      if (doses.length) cmds.push(["LRANGE", KEYS.doses, "0", "59"]);
+
+      const out = await pipeline(cmds);
+      let ctl = parse(out[1], defaultCtl());
+
+      const later = [];
 
       // finished doses reported by the Arduino (skip any already saved)
-      if (Array.isArray(b.doses) && b.doses.length) {
-        const recent = await getHistory(KEYS.doses, 60);
-        const seen = new Set(recent.map(d => String(d.id)));
-        for (const d of b.doses.slice(0, 10)) {
+      if (doses.length) {
+        const seen = new Set(parseList(out[out.length - 1]).map(d => String(d.id)));
+        const fresh = [];
+        for (const d of doses) {
           const pump = String(d.pump || "").toUpperCase();
           if ((pump !== "A" && pump !== "B") || seen.has(String(d.id))) continue;
           seen.add(String(d.id));
-          await pushHistory(KEYS.doses, {
-            id: d.id,
-            time: record.time,
-            pump,
-            ml: num(d.ml) ?? 0,
-            sec: num(d.sec) ?? 0,
-            auto: bool(d.auto)
-          }, 1000);
+          fresh.push(str({ id: d.id, time: record.time, pump, ml: num(d.ml) ?? 0, sec: num(d.sec) ?? 0, auto: bool(d.auto) }));
         }
+        if (fresh.length) later.push(["LPUSH", KEYS.doses, ...fresh], ["LTRIM", KEYS.doses, "0", String(DOSES_MAX - 1)]);
       }
-
-      const mode = (await getJSON(KEYS.mode, "manual")) || "manual";
-      let cmd = await getJSON(KEYS.cmd, null);
 
       // Arduino confirmed it ran this command -> clear it
-      if (cmd && record.lastCmdId && Number(cmd.id) === record.lastCmdId) {
-        await del(KEYS.cmd);
-        cmd = null;
+      if (ctl.cmd && record.lastCmdId && Number(ctl.cmd.id) === record.lastCmdId) {
+        ctl = { ...ctl, cmd: null };
+        later.push(["SET", KEYS.ctl, str(ctl)]);
       }
+      await pipeline(later);
 
-      return res.status(200).json({ ok: true, mode, cmd });
+      return res.status(200).json({ ok: true, mode: ctl.mode || "manual", cmd: ctl.cmd || null });
     }
 
     /* ================= DASHBOARD READS DATA ================= */
     if (req.method === "GET") {
-      const latest = (await getJSON(KEYS.latest, null)) || { ph: 0, tds: 0, time: null };
-      const mode = (await getJSON(KEYS.mode, "manual")) || "manual";
-      const cmd = await getJSON(KEYS.cmd, null);
-      const online = latest.time ? Date.now() - new Date(latest.time).getTime() < 20000 : false;
+      const [latestRaw, ctlRaw, dosesRaw] = await pipeline([
+        ["GET", KEYS.latest],
+        ["GET", KEYS.ctl],
+        ["LRANGE", KEYS.doses, "0", "299"]
+      ]);
+      const latest = parse(latestRaw, { ph: 0, tds: 0, time: null });
+      const ctl = parse(ctlRaw, defaultCtl());
+      const doses = parseList(dosesRaw);
+      const online = latest.time ? Date.now() - new Date(latest.time).getTime() < 45000 : false;
 
-      const doses = await getHistory(KEYS.doses, 300);
       const today = istDay(new Date().toISOString());
       const doseToday = { A: 0, B: 0, count: 0 };
       for (const d of doses) {
@@ -96,8 +110,8 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       return res.status(200).json({
         ...latest,
-        mode,
-        pendingCmd: cmd,
+        mode: ctl.mode || "manual",
+        pendingCmd: ctl.cmd || null,
         doseToday,
         recentDoses: doses.slice(0, 6),
         online,
