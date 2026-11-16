@@ -230,6 +230,15 @@
     .system, .lower { grid-template-columns: 1fr; }
     .lower { gap: 32px; }
   }
+  @media (max-width: 560px) {
+    /* the drawing shrinks on phones, so make its text bigger to stay readable */
+    .rig { padding: 8px 4px 2px; }
+    .rig .t-meta { font-size: 19px; }
+    .rig .t-name { font-size: 22px; }
+    .rig .t-mid  { font-size: 28px; }
+    .rig .t-big  { font-size: 46px; }
+    .rig .t-pump { display: none; }
+  }
   @media (max-width: 480px) {
     .page { padding: 20px 16px 40px; }
     .dose { grid-template-columns: 1fr auto; }
@@ -326,9 +335,9 @@
 
         <!-- pumps -->
         <circle class="pump pump-a" id="lightA" cx="174" cy="262" r="14" />
-        <text class="t-meta" x="174" y="292" text-anchor="middle">Pump A</text>
+        <text class="t-meta t-pump" x="174" y="292" text-anchor="middle">Pump A</text>
         <circle class="pump pump-b" id="lightB" cx="466" cy="262" r="14" />
-        <text class="t-meta" x="466" y="292" text-anchor="middle">Pump B</text>
+        <text class="t-meta t-pump" x="466" y="292" text-anchor="middle">Pump B</text>
       </svg>
     </div>
 
