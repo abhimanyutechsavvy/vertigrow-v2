@@ -3,7 +3,7 @@
 // History needs the Upstash Redis database; without it only the latest reading is exported.
 
 import XLSX from "xlsx";
-import { getHistory, getJSON, KEYS } from "./_store.js";
+import { pipeline, parse, parseList, KEYS } from "./_store.js";
 
 const yesNo = v => (v ? "Yes" : "No");
 const val = v => (v === null || v === undefined ? "" : v);
@@ -22,9 +22,14 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "GET") return res.status(405).end();
 
-    let rows = await getHistory(KEYS.history, 2000);
+    const [histRaw, latestRaw, dosesRaw] = await pipeline([
+      ["LRANGE", KEYS.history, "0", "4999"],
+      ["GET", KEYS.latest],
+      ["LRANGE", KEYS.doses, "0", "999"]
+    ]);
+    let rows = parseList(histRaw);
     if (!rows.length) {
-      const latest = await getJSON(KEYS.latest, null);
+      const latest = parse(latestRaw);
       if (latest && latest.time) rows = [latest];
     }
     if (!rows.length) return res.status(200).send("No data available yet - is the Arduino sending?");
@@ -53,7 +58,7 @@ export default async function handler(req, res) {
     XLSX.utils.book_append_sheet(wb, ws, "Readings");
 
     // second sheet: every nutrient dose
-    const doses = await getHistory(KEYS.doses, 1000);
+    const doses = parseList(dosesRaw);
     const doseRows = doses.length
       ? doses.map(d => ({
           "Time (IST)": new Date(d.time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
