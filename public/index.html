@@ -191,7 +191,7 @@
   .season-title { font: 700 34px/1.05 var(--display); letter-spacing: -0.02em; margin: 0; }
   .season-sub { color: var(--ink-soft); margin: 6px 0 0; max-width: 62ch; }
   .season-pick { display: inline-flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
-  .season-pick button { border: 0; background: transparent; color: var(--ink); font: 600 14px var(--text); padding: 9px 16px; cursor: pointer; }
+  .season-pick button { border: 0; background: transparent; color: var(--ink); font: 600 14px var(--text); padding: 9px 16px; cursor: pointer; white-space: nowrap; }
   .season-pick button + button { border-left: 1px solid var(--ink); }
   .season-pick button.active { background: var(--ink); color: var(--paper); }
   .season-tip { margin: 18px 0 22px; padding: 12px 16px; background: var(--surface); border-left: 3px solid var(--leaf); }
@@ -206,6 +206,12 @@
   .fit.ok { background: #DCEFE2; color: var(--ok); }
   .fit.adjust { background: #F6F0DA; color: var(--warn); }
   .fit.none { background: #E3E8DF; color: var(--ink-soft); }
+  .fit.bad { background: #F4DDD8; color: var(--bad); }
+  .locate { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 0; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  .locate-text { max-width: 70ch; }
+  .locate-text strong { font-weight: 600; }
+  .locate-text small { display: block; color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+  .locate.on { border-color: var(--leaf); }
   .water-saved { font-weight: 600; color: var(--water-deep); white-space: nowrap; }
   .water-sub { font-size: 12px; color: var(--ink-soft); }
   .crops-note { font-size: 13px; color: var(--ink-soft); margin-top: 16px; }
@@ -217,6 +223,7 @@
     .crop-table td.c-days::before { content: "Harvest "; color: var(--ink-soft); }
     .crop-table td.c-days { grid-column: 1; }
     .crop-table td.c-water { grid-column: 2; grid-row: 1; text-align: right; }
+    .crop-table td.c-fit { grid-column: 1 / -1; }
   }
 
   /* ---------- pop-up ---------- */
@@ -243,6 +250,8 @@
   }
   @media (max-width: 480px) {
     .page { padding: 20px 16px 40px; }
+    .season-pick { display: flex; width: 100%; }
+    .season-pick button { flex: 1; padding: 9px 6px; font-size: 13px; }
     .dose { grid-template-columns: 1fr auto; }
     .dose .btn { grid-column: 1 / -1; }
   }
@@ -436,15 +445,23 @@
         <p class="season-sub" id="seasonSub"></p>
       </div>
       <div class="season-pick" role="group" aria-label="Season">
+        <button data-season="near" onclick="pickSeason('near')">Near you</button>
         <button data-season="winter" onclick="pickSeason('winter')">Winter</button>
         <button data-season="summer" onclick="pickSeason('summer')">Summer</button>
         <button data-season="monsoon" onclick="pickSeason('monsoon')">Monsoon</button>
       </div>
     </div>
+    <div class="locate" id="locateBox">
+      <div class="locate-text" id="locateText">
+        <strong>Get advice for where you are.</strong> Share your location once and VertiGrow checks this week's weather near you, then ranks every crop for it.
+        <small>Your location stays in your browser. It's only used to look up the weather and your town's name; the AI assistant gets just the town and temperatures.</small>
+      </div>
+      <button class="btn" id="locateBtn" onclick="useMyLocation()">Use my location</button>
+    </div>
     <p class="season-tip" id="seasonTip"></p>
     <table class="crop-table">
       <thead>
-        <tr><th>Crop</th><th>Why it suits this season</th><th>Harvest</th><th>Water saved vs soil farming</th></tr>
+        <tr><th>Crop</th><th id="whyHead">Why it suits this season</th><th>Harvest</th><th>Water saved vs soil farming</th><th class="c-fit-h" id="fitHead" hidden>For your weather</th></tr>
       </thead>
       <tbody id="cropRows"></tbody>
     </table>
@@ -813,6 +830,7 @@
             bPct: latest.bOk ? latest.bPct : null,
             mainL: latest.mainL, aMl: latest.aMl, bMl: latest.bMl,
             addedTodayMl: latest.doseToday,
+            location: localWx ? { place: localWx.place, tempNow: localWx.now, dayMax: localWx.dayMax, nightMin: localWx.nightMin, rainMm: localWx.rainMm } : null,
             mode: latest.mode
           }
         })
@@ -836,7 +854,7 @@
     $("tabCrops").classList.toggle("active", crops);
     $("tabDash").setAttribute("aria-selected", String(!crops));
     $("tabCrops").setAttribute("aria-selected", String(crops));
-    if (crops) renderCrops();
+    if (crops) { renderCrops(); if (!localWx && locationWasAllowed()) useMyLocation(); }
     const want = crops ? "#crops" : "";
     if (location.hash !== want) history.replaceState(null, "", want || location.pathname);
   }
@@ -855,22 +873,116 @@
   };
 
   const CROPS = [
-    { name: "Lettuce", local: "Salad patta", seasons: ["winter"], ph: [5.5, 6.5], tds: [400, 800], days: "30–45 days", water: { pct: "About 92% less", detail: "20 L vs 250 L per kg" }, why: "The easiest hydroponic crop. Loves cool weather." },
-    { name: "Spinach", local: "Palak", seasons: ["winter"], ph: [6.0, 7.0], tds: [900, 1150], days: "35–45 days", why: "Classic winter green. Needs stronger nutrients than lettuce." },
-    { name: "Kale", local: "Kale", seasons: ["winter"], ph: [5.5, 6.5], tds: [600, 1000], days: "50–60 days", why: "Hardy and cold-tolerant. Keeps giving leaves for weeks." },
-    { name: "Coriander", local: "Dhania", seasons: ["winter", "monsoon"], ph: [6.0, 6.7], tds: [600, 900], days: "30–40 days", why: "Bolts in summer heat, so grow it in the cooler months." },
-    { name: "Fenugreek", local: "Methi", seasons: ["winter"], ph: [6.0, 7.0], tds: [600, 900], days: "20–30 days", why: "One of the fastest crops. Cut young leaves." },
-    { name: "Pak choi", local: "Chinese cabbage", seasons: ["winter"], ph: [6.0, 7.0], tds: [750, 1000], days: "40–45 days", why: "Grows quickly in cool weather; good for stir-fry." },
-    { name: "Arugula", local: "Rocket", seasons: ["winter"], ph: [6.0, 7.0], tds: [400, 800], days: "25–35 days", why: "Peppery salad leaf that grows very fast when it's cool." },
-    { name: "Swiss chard", local: "Chard", seasons: ["winter", "monsoon"], ph: [6.0, 6.5], tds: [900, 1150], days: "45–55 days", why: "Handles mild heat better than spinach." },
-    { name: "Spring onion", local: "Hara pyaaz", seasons: ["winter", "monsoon"], ph: [6.0, 7.0], tds: [700, 900], days: "30–40 days", why: "Grows from the base again after you cut it." },
-    { name: "Amaranth", local: "Chaulai", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [600, 1000], days: "25–35 days", why: "Loves heat. One of the best summer greens for Delhi." },
-    { name: "Water spinach", local: "Kalmi saag", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [750, 1000], days: "25–30 days", why: "Thrives in hot, wet weather and grows back after cutting." },
-    { name: "Basil", local: "Sweet basil / Tulsi", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "30–45 days", why: "Heat-loving herb. Pinch the tops to keep it bushy." },
-    { name: "Mint", local: "Pudina", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "Ongoing", why: "Very easy and grows all year; strongest in warm months." }
+    { name: "Lettuce", temp: [15, 24], local: "Salad patta", seasons: ["winter"], ph: [5.5, 6.5], tds: [400, 800], days: "30–45 days", water: { pct: "About 92% less", detail: "20 L vs 250 L per kg" }, why: "The easiest hydroponic crop. Loves cool weather." },
+    { name: "Spinach", temp: [10, 24], local: "Palak", seasons: ["winter"], ph: [6.0, 7.0], tds: [900, 1150], days: "35–45 days", why: "Classic winter green. Needs stronger nutrients than lettuce." },
+    { name: "Kale", temp: [7, 24], local: "Kale", seasons: ["winter"], ph: [5.5, 6.5], tds: [600, 1000], days: "50–60 days", why: "Hardy and cold-tolerant. Keeps giving leaves for weeks." },
+    { name: "Coriander", temp: [15, 25], local: "Dhania", seasons: ["winter", "monsoon"], ph: [6.0, 6.7], tds: [600, 900], days: "30–40 days", why: "Bolts in summer heat, so grow it in the cooler months." },
+    { name: "Fenugreek", temp: [12, 28], local: "Methi", seasons: ["winter"], ph: [6.0, 7.0], tds: [600, 900], days: "20–30 days", why: "One of the fastest crops. Cut young leaves." },
+    { name: "Pak choi", temp: [13, 24], local: "Chinese cabbage", seasons: ["winter"], ph: [6.0, 7.0], tds: [750, 1000], days: "40–45 days", why: "Grows quickly in cool weather; good for stir-fry." },
+    { name: "Arugula", temp: [10, 24], local: "Rocket", seasons: ["winter"], ph: [6.0, 7.0], tds: [400, 800], days: "25–35 days", why: "Peppery salad leaf that grows very fast when it's cool." },
+    { name: "Swiss chard", temp: [10, 29], local: "Chard", seasons: ["winter", "monsoon"], ph: [6.0, 6.5], tds: [900, 1150], days: "45–55 days", why: "Handles mild heat better than spinach." },
+    { name: "Spring onion", temp: [13, 27], local: "Hara pyaaz", seasons: ["winter", "monsoon"], ph: [6.0, 7.0], tds: [700, 900], days: "30–40 days", why: "Grows from the base again after you cut it." },
+    { name: "Amaranth", temp: [22, 35], local: "Chaulai", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [600, 1000], days: "25–35 days", why: "Loves heat. One of the best summer greens for Delhi." },
+    { name: "Water spinach", temp: [24, 35], local: "Kalmi saag", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [750, 1000], days: "25–30 days", why: "Thrives in hot, wet weather and grows back after cutting." },
+    { name: "Basil", temp: [20, 32], local: "Sweet basil / Tulsi", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "30–45 days", why: "Heat-loving herb. Pinch the tops to keep it bushy." },
+    { name: "Mint", temp: [15, 30], local: "Pudina", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "Ongoing", why: "Very easy and grows all year; strongest in warm months." }
   ];
 
   let shownSeason = null;
+
+  /* ---------- near you: location + local weather ---------- */
+  let localWx = null;      // { place, now, dayMax, nightMin, rainMm, humidity }
+  let locating = false;
+
+  function avg(a) { const v = a.filter(x => typeof x === "number"); return v.length ? v.reduce((t, x) => t + x, 0) / v.length : null; }
+
+  async function lookUpWeather(lat, lon) {
+    const wxUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + lat.toFixed(3) + "&longitude=" + lon.toFixed(3) +
+      "&current=temperature_2m,relative_humidity_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=7";
+    const placeUrl = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat.toFixed(3) + "&longitude=" + lon.toFixed(3) + "&localityLanguage=en";
+    const [wx, pl] = await Promise.all([
+      fetch(wxUrl).then(r => { if (!r.ok) throw new Error("weather"); return r.json(); }),
+      fetch(placeUrl).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    ]);
+    const town = pl.city || pl.locality || "";
+    const region = pl.principalSubdivision || pl.countryName || "";
+    return {
+      place: [town, region].filter(Boolean).join(", ") || "your area",
+      now: wx.current ? Math.round(wx.current.temperature_2m) : null,
+      humidity: wx.current ? wx.current.relative_humidity_2m : null,
+      dayMax: Math.round(avg(wx.daily.temperature_2m_max)),
+      nightMin: Math.round(avg(wx.daily.temperature_2m_min)),
+      rainMm: Math.round(wx.daily.precipitation_sum.reduce((t, x) => t + (x || 0), 0))
+    };
+  }
+
+  function rememberLocationChoice(on) { try { on ? localStorage.setItem("vg_loc", "1") : localStorage.removeItem("vg_loc"); } catch (e) {} }
+  function locationWasAllowed() { try { return localStorage.getItem("vg_loc") === "1"; } catch (e) { return false; } }
+
+  function setLocateText(strong, rest, small) {
+    const box = $("locateText");
+    box.innerHTML = "";
+    const b = document.createElement("strong"); b.textContent = strong;
+    box.append(b, document.createTextNode(" " + rest));
+    if (small) { const sm = document.createElement("small"); sm.textContent = small; box.append(sm); }
+  }
+
+  function useMyLocation() {
+    if (locating) return;
+    if (!("geolocation" in navigator)) {
+      setLocateText("Location isn't available in this browser.", "You can still pick a season above.");
+      return;
+    }
+    locating = true;
+    $("locateBtn").textContent = "Finding you…";
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        localWx = await lookUpWeather(pos.coords.latitude, pos.coords.longitude);
+        rememberLocationChoice(true);
+        $("locateBox").classList.add("on");
+        setLocateText("Near " + localWx.place + ":",
+          (localWx.now != null ? localWx.now + "°C now. " : "") +
+          "This week, days around " + localWx.dayMax + "°C and nights around " + localWx.nightMin + "°C" +
+          (localWx.rainMm > 0 ? ", with about " + localWx.rainMm + " mm of rain." : ", with no rain expected."),
+          "Weather from Open-Meteo. Your location stays in your browser.");
+        $("locateBtn").textContent = "Update";
+        shownSeason = "near";
+        renderCrops();
+      } catch (e) {
+        setLocateText("Couldn't get the weather right now.", "Check your internet and try again, or pick a season above.");
+        $("locateBtn").textContent = "Try again";
+      } finally {
+        locating = false;
+      }
+    }, err => {
+      locating = false;
+      rememberLocationChoice(false);
+      $("locateBtn").textContent = "Use my location";
+      setLocateText(err.code === 1 ? "Location is turned off for this site." : "Couldn't find your location.",
+        err.code === 1 ? "Allow location in your browser's site settings to get local advice, or pick a season above." : "Try again in a moment, or pick a season above.");
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30 * 60 * 1000 });
+  }
+
+  // how well a crop suits this week's weather near you
+  function weatherFit(c) {
+    if (!localWx || !c.temp) return null;
+    // judge by the average of day and night, with a check for very hot afternoons
+    const mean = (localWx.dayMax + localWx.nightMin) / 2;
+    if (mean > c.temp[1] + 2) return ["bad", "Too hot now", 2];
+    if (mean < c.temp[0] - 3) return ["bad", "Too cold now", 2];
+    if (mean > c.temp[1] || localWx.dayMax > c.temp[1] + 8) return ["adjust", "Hot afternoons: give shade", 1];
+    if (mean < c.temp[0]) return ["adjust", "Cool: grows slower", 1];
+    return ["ok", "Good for your weather", 0];
+  }
+
+  function localTip() {
+    const w = localWx, tips = [];
+    if (w.nightMin < 12) tips.push("Nights near you drop to about " + w.nightMin + "°C, so keep the water above 15°C or growth slows.");
+    if (w.dayMax > 32) tips.push("Days near you reach about " + w.dayMax + "°C. Shade the main tank and top it up often; warm water holds less oxygen.");
+    if (w.rainMm > 20 || (w.humidity != null && w.humidity > 80)) tips.push("It's wet and humid this week, so keep air moving around the plants to prevent root rot.");
+    if (!tips.length) tips.push("Mild weather near you this week, so most leafy greens will do well.");
+    return tips.join(" ");
+  }
 
   function seasonForToday() {
     const m = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", month: "numeric" }));
@@ -880,22 +992,36 @@
   }
 
   function pickSeason(key) {
+    if (key === "near" && !localWx) { useMyLocation(); return; }
     shownSeason = key;
     renderCrops();
   }
 
   function renderCrops() {
     const today = seasonForToday();
-    const key = shownSeason || today;
-    const s = SEASONS[key];
-    $("seasonTitle").textContent = (key === today ? "Best now: " : "") + s.name + " crops";
-    $("seasonSub").textContent = s.months + ". " + s.sub;
-    $("seasonTip").textContent = s.tip;
+    const key = shownSeason === "near" && localWx ? "near" : (shownSeason && shownSeason !== "near" ? shownSeason : today);
+    const near = key === "near";
+    if (near) {
+      $("seasonTitle").textContent = "Best crops near you";
+      $("seasonSub").textContent = "Ranked for this week's weather in " + localWx.place + ". Crops that suit it best come first.";
+      $("seasonTip").textContent = localTip();
+    } else {
+      const s = SEASONS[key];
+      $("seasonTitle").textContent = (key === today ? "Best now: " : "") + s.name + " crops";
+      $("seasonSub").textContent = s.months + ". " + s.sub;
+      $("seasonTip").textContent = s.tip;
+    }
+    $("whyHead").textContent = near ? "Why grow it" : "Why it suits this season";
+    $("fitHead").hidden = !near;
     document.querySelectorAll(".season-pick button").forEach(b => b.classList.toggle("active", b.dataset.season === key));
+
+    const list = near
+      ? CROPS.map(c => ({ c, f: weatherFit(c) })).sort((a, b) => a.f[2] - b.f[2]).map(x => x.c)
+      : CROPS.filter(c => c.seasons.includes(key));
 
     const body = $("cropRows");
     body.innerHTML = "";
-    CROPS.filter(c => c.seasons.includes(key)).forEach(c => {
+    list.forEach(c => {
       const tr = document.createElement("tr");
       const cell = (html, extra) => { const td = document.createElement("td"); if (extra) td.className = extra; td.append(...html); tr.append(td); };
       const name = document.createElement("div"); name.className = "crop-name"; name.textContent = c.name;
@@ -908,6 +1034,12 @@
       const w = document.createElement("div"); w.className = "water-saved"; w.textContent = c.water ? c.water.pct : "About 90% less";
       const ws = document.createElement("div"); ws.className = "water-sub"; ws.textContent = c.water ? c.water.detail : "typical for leafy greens";
       cell([w, ws], "c-water");
+      if (near) {
+        const [cls, label] = weatherFit(c);
+        const fit = document.createElement("span"); fit.className = "fit " + cls; fit.textContent = label;
+        const range = document.createElement("div"); range.className = "water-sub"; range.textContent = "grows best at " + c.temp[0] + "–" + c.temp[1] + "°C";
+        cell([fit, range], "c-fit");
+      }
       body.append(tr);
     });
   }
