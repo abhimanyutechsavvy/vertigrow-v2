@@ -354,7 +354,7 @@
       </div>
 
       <button class="btn stop" onclick="stopPumps()">Stop all pumps</button>
-      <p class="control-note" id="controlNote">The Arduino picks up a command within about 5 seconds.</p>
+      <p class="control-note" id="controlNote">The Arduino picks up a command within about 15 seconds.</p>
     </div>
 
     <!-- assistant -->
@@ -709,7 +709,7 @@
 
   async function stopPumps() {
     const r = await sendCommand({ action: "stop" });
-    if (r) $("controlNote").innerText = "Stop sent. Pumps switch off within about 5 seconds.";
+    if (r) $("controlNote").innerText = "Stop sent. Pumps switch off within about 15 seconds.";
   }
 
   /* ---------- assistant ---------- */
@@ -749,7 +749,7 @@
 
   updateMlHints();
   updateDashboard();
-  setInterval(updateDashboard, 3000);
+  setInterval(() => { if (!document.hidden) updateDashboard(); }, 5000);
 </script>
 </body>
 </html>
