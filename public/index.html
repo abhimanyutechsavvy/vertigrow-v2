@@ -206,14 +206,17 @@
   .fit.ok { background: #DCEFE2; color: var(--ok); }
   .fit.adjust { background: #F6F0DA; color: var(--warn); }
   .fit.none { background: #E3E8DF; color: var(--ink-soft); }
+  .water-saved { font-weight: 600; color: var(--water-deep); white-space: nowrap; }
+  .water-sub { font-size: 12px; color: var(--ink-soft); }
   .crops-note { font-size: 13px; color: var(--ink-soft); margin-top: 16px; }
   @media (max-width: 760px) {
     .crop-table thead { display: none; }
     .crop-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
     .crop-table td { border: 0; padding: 0; }
     .crop-table td.c-why { grid-column: 1 / -1; }
-    .crop-table td.c-tds::before { content: "TDS "; color: var(--ink-soft); }
     .crop-table td.c-days::before { content: "Harvest "; color: var(--ink-soft); }
+    .crop-table td.c-days { grid-column: 1; }
+    .crop-table td.c-water { grid-column: 2; grid-row: 1; text-align: right; }
   }
 
   /* ---------- pop-up ---------- */
@@ -441,11 +444,11 @@
     <p class="season-tip" id="seasonTip"></p>
     <table class="crop-table">
       <thead>
-        <tr><th>Crop</th><th>Why it suits this season</th><th>Nutrients (TDS)</th><th>Harvest</th><th>Your water now</th></tr>
+        <tr><th>Crop</th><th>Why it suits this season</th><th>Harvest</th><th>Water saved vs soil farming</th></tr>
       </thead>
       <tbody id="cropRows"></tbody>
     </table>
-    <p class="crops-note">Seasons are for Delhi NCR. TDS ranges are typical for hydroponics, on the same 0.5 scale as your TDS sensor; varieties differ, so also check the seed packet. VertiGrow suits leafy greens and herbs, not root vegetables.</p>
+    <p class="crops-note">Seasons are for Delhi NCR. Harvest times are typical; varieties differ, so also check the seed packet. Water savings: for lettuce, a 2015 Arizona State University study (Barbosa et al.) measured about 20 litres per kg in hydroponics against 250 litres per kg in field farming; for the other greens and herbs, about 90% is the commonly quoted figure for recirculating hydroponics, not a measurement for each crop. VertiGrow suits leafy greens and herbs, not root vegetables.</p>
   </section>
 </div>
 
@@ -842,7 +845,7 @@
   const SEASONS = {
     winter:  { name: "Winter", months: "October to February",
                sub: "Cool days and nights are ideal for leafy greens. Most of them grow fast and taste sweet in this weather.",
-               tip: "Keep the water above about 15°C on very cold nights, or growth slows down. Leafy greens like the lower end of the nutrient range." },
+               tip: "Keep the water above about 15°C on very cold nights, or growth slows down." },
     summer:  { name: "Summer", months: "March to June",
                sub: "Delhi heat makes lettuce and spinach bolt and turn bitter, so grow heat-loving greens and herbs instead.",
                tip: "Warm water holds less oxygen. Shade the main tank, top it up often, and keep the water below about 26°C if you can." },
@@ -852,7 +855,7 @@
   };
 
   const CROPS = [
-    { name: "Lettuce", local: "Salad patta", seasons: ["winter"], ph: [5.5, 6.5], tds: [400, 800], days: "30–45 days", why: "The easiest hydroponic crop. Loves cool weather." },
+    { name: "Lettuce", local: "Salad patta", seasons: ["winter"], ph: [5.5, 6.5], tds: [400, 800], days: "30–45 days", water: { pct: "About 92% less", detail: "20 L vs 250 L per kg" }, why: "The easiest hydroponic crop. Loves cool weather." },
     { name: "Spinach", local: "Palak", seasons: ["winter"], ph: [6.0, 7.0], tds: [900, 1150], days: "35–45 days", why: "Classic winter green. Needs stronger nutrients than lettuce." },
     { name: "Kale", local: "Kale", seasons: ["winter"], ph: [5.5, 6.5], tds: [600, 1000], days: "50–60 days", why: "Hardy and cold-tolerant. Keeps giving leaves for weeks." },
     { name: "Coriander", local: "Dhania", seasons: ["winter", "monsoon"], ph: [6.0, 6.7], tds: [600, 900], days: "30–40 days", why: "Bolts in summer heat, so grow it in the cooler months." },
@@ -876,15 +879,6 @@
     return "winter";
   }
 
-  function fitFor(crop) {
-    const d = latest || {};
-    const tdsOn = d.time && d.tdsOk !== false;
-    if (!tdsOn) return ["none", "No reading yet"];
-    if (d.tds < crop.tds[0]) return ["adjust", "Add nutrients"];
-    if (d.tds > crop.tds[1]) return ["adjust", "Dilute with water"];
-    return ["ok", "Good match"];
-  }
-
   function pickSeason(key) {
     shownSeason = key;
     renderCrops();
@@ -902,20 +896,18 @@
     const body = $("cropRows");
     body.innerHTML = "";
     CROPS.filter(c => c.seasons.includes(key)).forEach(c => {
-      const [cls, label] = fitFor(c);
       const tr = document.createElement("tr");
       const cell = (html, extra) => { const td = document.createElement("td"); if (extra) td.className = extra; td.append(...html); tr.append(td); };
       const name = document.createElement("div"); name.className = "crop-name"; name.textContent = c.name;
       const local = document.createElement("div"); local.className = "crop-local"; local.textContent = c.local;
       const why = document.createElement("div"); why.className = "crop-why"; why.textContent = c.why;
-      const tds = document.createElement("span"); tds.className = "crop-num"; tds.textContent = c.tds[0] + " to " + c.tds[1] + " ppm";
       const days = document.createElement("span"); days.className = "crop-num"; days.textContent = c.days;
-      const fit = document.createElement("span"); fit.className = "fit " + cls; fit.textContent = label;
       cell([name, local]);
       cell([why], "c-why");
-      cell([tds], "c-tds");
       cell([days], "c-days");
-      cell([fit]);
+      const w = document.createElement("div"); w.className = "water-saved"; w.textContent = c.water ? c.water.pct : "About 90% less";
+      const ws = document.createElement("div"); ws.className = "water-sub"; ws.textContent = c.water ? c.water.detail : "typical for leafy greens";
+      cell([w, ws], "c-water");
       body.append(tr);
     });
   }
