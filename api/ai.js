@@ -26,6 +26,10 @@ export default async function handler(req, res) {
     const mode = sensorData.mode ?? "unknown";
     const amt = (v, u) => (v === null || v === undefined ? "unknown" : v + " " + u);
     const added = sensorData.addedTodayMl || {};
+    const loc = sensorData.location && typeof sensorData.location === "object" ? sensorData.location : null;
+    const where = loc
+      ? `${String(loc.place || "unknown").slice(0, 80)}: ${loc.tempNow ?? "?"}°C now, this week days about ${loc.dayMax ?? "?"}°C and nights about ${loc.nightMin ?? "?"}°C, about ${loc.rainMm ?? 0} mm rain`
+      : "not shared";
 
     const systemPrompt = `You are VertiGrow AI, an assistant for a vertical hydroponics garden.
 Explain in very simple words.
@@ -39,6 +43,8 @@ Current system vitals:
 - NPK A left: ${amt(sensorData.aMl, "ml")}, NPK B left: ${amt(sensorData.bMl, "ml")}
 - Nutrients added today: NPK A ${added.A ?? 0} ml, NPK B ${added.B ?? 0} ml
 - Dosing mode: ${mode}
+- User's location and local weather: ${where}
+If the location is shared, tailor crop and care advice to that place and its weather.
 If a tank is low, remind the user to refill it.
 Rules:
 - No wiring instructions
