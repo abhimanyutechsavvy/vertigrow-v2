@@ -179,6 +179,44 @@
 
   button:focus-visible, input:focus-visible { outline: 2px solid var(--water); outline-offset: 2px; }
 
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 4px; margin: -8px 0 24px; border-bottom: 1px solid var(--rule); }
+  .tab { border: 0; background: transparent; font: 600 15px var(--text); color: var(--ink-soft); padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--leaf); border-bottom-color: var(--leaf); }
+  .tab:hover { color: var(--ink); }
+  [hidden] { display: none !important; }
+
+  /* ---------- seasonal crops ---------- */
+  .season-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
+  .season-title { font: 700 34px/1.05 var(--display); letter-spacing: -0.02em; margin: 0; }
+  .season-sub { color: var(--ink-soft); margin: 6px 0 0; max-width: 62ch; }
+  .season-pick { display: inline-flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
+  .season-pick button { border: 0; background: transparent; color: var(--ink); font: 600 14px var(--text); padding: 9px 16px; cursor: pointer; }
+  .season-pick button + button { border-left: 1px solid var(--ink); }
+  .season-pick button.active { background: var(--ink); color: var(--paper); }
+  .season-tip { margin: 18px 0 22px; padding: 12px 16px; background: var(--surface); border-left: 3px solid var(--leaf); }
+  .crop-table { width: 100%; border-collapse: collapse; }
+  .crop-table th { text-align: left; font: 600 13px var(--text); color: var(--ink-soft); padding: 0 12px 10px 0; border-bottom: 1px solid var(--rule); }
+  .crop-table td { padding: 14px 12px 14px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .crop-name { font: 700 18px/1.2 var(--display); }
+  .crop-local { color: var(--ink-soft); font-size: 13px; }
+  .crop-why { color: var(--ink-soft); font-size: 14px; max-width: 38ch; }
+  .crop-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fit { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 12px; white-space: nowrap; }
+  .fit.ok { background: #DCEFE2; color: var(--ok); }
+  .fit.adjust { background: #F6F0DA; color: var(--warn); }
+  .fit.none { background: #E3E8DF; color: var(--ink-soft); }
+  .crops-note { font-size: 13px; color: var(--ink-soft); margin-top: 16px; }
+  @media (max-width: 760px) {
+    .crop-table thead { display: none; }
+    .crop-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+    .crop-table td { border: 0; padding: 0; }
+    .crop-table td.c-why { grid-column: 1 / -1; }
+    .crop-table td.c-ph::before { content: "pH "; color: var(--ink-soft); }
+    .crop-table td.c-tds::before { content: "TDS "; color: var(--ink-soft); }
+    .crop-table td.c-days::before { content: "Harvest "; color: var(--ink-soft); }
+  }
+
   /* ---------- pop-up ---------- */
   .modal-bg { position: fixed; inset: 0; background: rgba(29, 43, 34, 0.45); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 20; }
   .modal-bg.show { display: flex; }
@@ -212,6 +250,12 @@
     <div class="link-state"><span class="link-dot" id="onlineDot"></span><span id="onlineText">Waiting for the Arduino</span></div>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab active" id="tabDash" role="tab" aria-selected="true" onclick="showView('dashboard')">Dashboard</button>
+    <button class="tab" id="tabCrops" role="tab" aria-selected="false" onclick="showView('crops')">Crops for this season</button>
+  </nav>
+
+  <div id="viewDash">
   <div class="notice" id="storageBanner">
     The database isn't connected, so readings can reset and the Excel report only holds the latest one.
     Connect Upstash Redis under Storage in Vercel to fix this.
@@ -370,6 +414,30 @@
         <button class="btn quiet" onclick="downloadExcel()">Download Excel report</button>
       </div>
     </div>
+  </section>
+  </div>
+
+  <!-- ===== seasonal crops ===== -->
+  <section id="viewCrops" hidden>
+    <div class="season-head">
+      <div>
+        <h2 class="season-title" id="seasonTitle">Winter crops</h2>
+        <p class="season-sub" id="seasonSub"></p>
+      </div>
+      <div class="season-pick" role="group" aria-label="Season">
+        <button data-season="winter" onclick="pickSeason('winter')">Winter</button>
+        <button data-season="summer" onclick="pickSeason('summer')">Summer</button>
+        <button data-season="monsoon" onclick="pickSeason('monsoon')">Monsoon</button>
+      </div>
+    </div>
+    <p class="season-tip" id="seasonTip"></p>
+    <table class="crop-table">
+      <thead>
+        <tr><th>Crop</th><th>Why it suits this season</th><th>pH</th><th>Nutrients (TDS)</th><th>Harvest</th><th>Your water now</th></tr>
+      </thead>
+      <tbody id="cropRows"></tbody>
+    </table>
+    <p class="crops-note">Seasons are for Delhi NCR. pH and TDS are typical hydroponic ranges on the same 0.5 scale as your TDS sensor; varieties differ, so also check the seed packet. VertiGrow suits leafy greens and herbs, not root vegetables.</p>
   </section>
 </div>
 
@@ -620,6 +688,7 @@
       showReminders(d, remMain, remNpk);
       showAdded(d);
       updateMlHints();
+      if (!$("viewCrops").hidden) renderCrops();
 
       /* pumps */
       const aOn = !!d.pumpA && d.online, bOn = !!d.pumpB && d.online;
@@ -747,7 +816,115 @@
 
   function downloadExcel() { window.location.href = "/api/export"; }
 
+  /* ---------- tabs ---------- */
+  function showView(v) {
+    const crops = v === "crops";
+    $("viewDash").hidden = crops;
+    $("viewCrops").hidden = !crops;
+    $("tabDash").classList.toggle("active", !crops);
+    $("tabCrops").classList.toggle("active", crops);
+    $("tabDash").setAttribute("aria-selected", String(!crops));
+    $("tabCrops").setAttribute("aria-selected", String(crops));
+    if (crops) renderCrops();
+    const want = crops ? "#crops" : "";
+    if (location.hash !== want) history.replaceState(null, "", want || location.pathname);
+  }
+
+  /* ---------- seasonal crops (Delhi NCR) ---------- */
+  const SEASONS = {
+    winter:  { name: "Winter", months: "October to February",
+               sub: "Cool days and nights are ideal for leafy greens. Most of them grow fast and taste sweet in this weather.",
+               tip: "Keep the water above about 15°C on very cold nights, or growth slows down. Leafy greens like the lower end of the nutrient range." },
+    summer:  { name: "Summer", months: "March to June",
+               sub: "Delhi heat makes lettuce and spinach bolt and turn bitter, so grow heat-loving greens and herbs instead.",
+               tip: "Warm water holds less oxygen. Shade the main tank, top it up often, and keep the water below about 26°C if you can." },
+    monsoon: { name: "Monsoon", months: "July to September",
+               sub: "Warm and humid. Fast, hardy greens and herbs do well; watch for root rot.",
+               tip: "High humidity invites fungus and root rot. Keep air moving around the plants and change the water more often." }
+  };
+
+  const CROPS = [
+    { name: "Lettuce", local: "Salad patta", seasons: ["winter"], ph: [5.5, 6.5], tds: [400, 800], days: "30–45 days", why: "The easiest hydroponic crop. Loves cool weather." },
+    { name: "Spinach", local: "Palak", seasons: ["winter"], ph: [6.0, 7.0], tds: [900, 1150], days: "35–45 days", why: "Classic winter green. Needs stronger nutrients than lettuce." },
+    { name: "Kale", local: "Kale", seasons: ["winter"], ph: [5.5, 6.5], tds: [600, 1000], days: "50–60 days", why: "Hardy and cold-tolerant. Keeps giving leaves for weeks." },
+    { name: "Coriander", local: "Dhania", seasons: ["winter", "monsoon"], ph: [6.0, 6.7], tds: [600, 900], days: "30–40 days", why: "Bolts in summer heat, so grow it in the cooler months." },
+    { name: "Fenugreek", local: "Methi", seasons: ["winter"], ph: [6.0, 7.0], tds: [600, 900], days: "20–30 days", why: "One of the fastest crops. Cut young leaves." },
+    { name: "Pak choi", local: "Chinese cabbage", seasons: ["winter"], ph: [6.0, 7.0], tds: [750, 1000], days: "40–45 days", why: "Grows quickly in cool weather; good for stir-fry." },
+    { name: "Arugula", local: "Rocket", seasons: ["winter"], ph: [6.0, 7.0], tds: [400, 800], days: "25–35 days", why: "Peppery salad leaf that grows very fast when it's cool." },
+    { name: "Swiss chard", local: "Chard", seasons: ["winter", "monsoon"], ph: [6.0, 6.5], tds: [900, 1150], days: "45–55 days", why: "Handles mild heat better than spinach." },
+    { name: "Spring onion", local: "Hara pyaaz", seasons: ["winter", "monsoon"], ph: [6.0, 7.0], tds: [700, 900], days: "30–40 days", why: "Grows from the base again after you cut it." },
+    { name: "Amaranth", local: "Chaulai", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [600, 1000], days: "25–35 days", why: "Loves heat. One of the best summer greens for Delhi." },
+    { name: "Water spinach", local: "Kalmi saag", seasons: ["summer", "monsoon"], ph: [6.0, 7.0], tds: [750, 1000], days: "25–30 days", why: "Thrives in hot, wet weather and grows back after cutting." },
+    { name: "Basil", local: "Sweet basil / Tulsi", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "30–45 days", why: "Heat-loving herb. Pinch the tops to keep it bushy." },
+    { name: "Mint", local: "Pudina", seasons: ["summer", "monsoon"], ph: [5.5, 6.5], tds: [500, 800], days: "Ongoing", why: "Very easy and grows all year; strongest in warm months." }
+  ];
+
+  let shownSeason = null;
+
+  function seasonForToday() {
+    const m = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", month: "numeric" }));
+    if (m >= 3 && m <= 6) return "summer";
+    if (m >= 7 && m <= 9) return "monsoon";
+    return "winter";
+  }
+
+  function fitFor(crop) {
+    const d = latest || {};
+    const phOn = d.time && d.phOk !== false, tdsOn = d.time && d.tdsOk !== false;
+    if (!phOn && !tdsOn) return ["none", "No reading yet"];
+    const notes = [];
+    if (phOn) {
+      if (d.ph < crop.ph[0]) notes.push("raise pH");
+      else if (d.ph > crop.ph[1]) notes.push("lower pH");
+    }
+    if (tdsOn) {
+      if (d.tds < crop.tds[0]) notes.push("add nutrients");
+      else if (d.tds > crop.tds[1]) notes.push("dilute with water");
+    }
+    if (!notes.length) return ["ok", "Good match"];
+    const t = notes.join(", ");
+    return ["adjust", t.charAt(0).toUpperCase() + t.slice(1)];
+  }
+
+  function pickSeason(key) {
+    shownSeason = key;
+    renderCrops();
+  }
+
+  function renderCrops() {
+    const today = seasonForToday();
+    const key = shownSeason || today;
+    const s = SEASONS[key];
+    $("seasonTitle").textContent = (key === today ? "Best now: " : "") + s.name + " crops";
+    $("seasonSub").textContent = s.months + ". " + s.sub;
+    $("seasonTip").textContent = s.tip;
+    document.querySelectorAll(".season-pick button").forEach(b => b.classList.toggle("active", b.dataset.season === key));
+
+    const body = $("cropRows");
+    body.innerHTML = "";
+    CROPS.filter(c => c.seasons.includes(key)).forEach(c => {
+      const [cls, label] = fitFor(c);
+      const tr = document.createElement("tr");
+      const cell = (html, extra) => { const td = document.createElement("td"); if (extra) td.className = extra; td.append(...html); tr.append(td); };
+      const name = document.createElement("div"); name.className = "crop-name"; name.textContent = c.name;
+      const local = document.createElement("div"); local.className = "crop-local"; local.textContent = c.local;
+      const why = document.createElement("div"); why.className = "crop-why"; why.textContent = c.why;
+      const ph = document.createElement("span"); ph.className = "crop-num"; ph.textContent = c.ph[0].toFixed(1) + " to " + c.ph[1].toFixed(1);
+      const tds = document.createElement("span"); tds.className = "crop-num"; tds.textContent = c.tds[0] + " to " + c.tds[1] + " ppm";
+      const days = document.createElement("span"); days.className = "crop-num"; days.textContent = c.days;
+      const fit = document.createElement("span"); fit.className = "fit " + cls; fit.textContent = label;
+      cell([name, local]);
+      cell([why], "c-why");
+      cell([ph], "c-ph");
+      cell([tds], "c-tds");
+      cell([days], "c-days");
+      cell([fit]);
+      body.append(tr);
+    });
+  }
+
   updateMlHints();
+  if (location.hash === "#crops") showView("crops");
   updateDashboard();
   setInterval(() => { if (!document.hidden) updateDashboard(); }, 5000);
 </script>
