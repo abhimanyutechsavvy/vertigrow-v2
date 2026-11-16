@@ -212,7 +212,6 @@
     .crop-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
     .crop-table td { border: 0; padding: 0; }
     .crop-table td.c-why { grid-column: 1 / -1; }
-    .crop-table td.c-ph::before { content: "pH "; color: var(--ink-soft); }
     .crop-table td.c-tds::before { content: "TDS "; color: var(--ink-soft); }
     .crop-table td.c-days::before { content: "Harvest "; color: var(--ink-soft); }
   }
@@ -442,11 +441,11 @@
     <p class="season-tip" id="seasonTip"></p>
     <table class="crop-table">
       <thead>
-        <tr><th>Crop</th><th>Why it suits this season</th><th>pH</th><th>Nutrients (TDS)</th><th>Harvest</th><th>Your water now</th></tr>
+        <tr><th>Crop</th><th>Why it suits this season</th><th>Nutrients (TDS)</th><th>Harvest</th><th>Your water now</th></tr>
       </thead>
       <tbody id="cropRows"></tbody>
     </table>
-    <p class="crops-note">Seasons are for Delhi NCR. pH and TDS are typical hydroponic ranges on the same 0.5 scale as your TDS sensor; varieties differ, so also check the seed packet. VertiGrow suits leafy greens and herbs, not root vegetables.</p>
+    <p class="crops-note">Seasons are for Delhi NCR. TDS ranges are typical for hydroponics, on the same 0.5 scale as your TDS sensor; varieties differ, so also check the seed packet. VertiGrow suits leafy greens and herbs, not root vegetables.</p>
   </section>
 </div>
 
@@ -879,20 +878,11 @@
 
   function fitFor(crop) {
     const d = latest || {};
-    const phOn = d.time && d.phOk !== false, tdsOn = d.time && d.tdsOk !== false;
-    if (!phOn && !tdsOn) return ["none", "No reading yet"];
-    const notes = [];
-    if (phOn) {
-      if (d.ph < crop.ph[0]) notes.push("raise pH");
-      else if (d.ph > crop.ph[1]) notes.push("lower pH");
-    }
-    if (tdsOn) {
-      if (d.tds < crop.tds[0]) notes.push("add nutrients");
-      else if (d.tds > crop.tds[1]) notes.push("dilute with water");
-    }
-    if (!notes.length) return ["ok", "Good match"];
-    const t = notes.join(", ");
-    return ["adjust", t.charAt(0).toUpperCase() + t.slice(1)];
+    const tdsOn = d.time && d.tdsOk !== false;
+    if (!tdsOn) return ["none", "No reading yet"];
+    if (d.tds < crop.tds[0]) return ["adjust", "Add nutrients"];
+    if (d.tds > crop.tds[1]) return ["adjust", "Dilute with water"];
+    return ["ok", "Good match"];
   }
 
   function pickSeason(key) {
@@ -918,13 +908,11 @@
       const name = document.createElement("div"); name.className = "crop-name"; name.textContent = c.name;
       const local = document.createElement("div"); local.className = "crop-local"; local.textContent = c.local;
       const why = document.createElement("div"); why.className = "crop-why"; why.textContent = c.why;
-      const ph = document.createElement("span"); ph.className = "crop-num"; ph.textContent = c.ph[0].toFixed(1) + " to " + c.ph[1].toFixed(1);
       const tds = document.createElement("span"); tds.className = "crop-num"; tds.textContent = c.tds[0] + " to " + c.tds[1] + " ppm";
       const days = document.createElement("span"); days.className = "crop-num"; days.textContent = c.days;
       const fit = document.createElement("span"); fit.className = "fit " + cls; fit.textContent = label;
       cell([name, local]);
       cell([why], "c-why");
-      cell([ph], "c-ph");
       cell([tds], "c-tds");
       cell([days], "c-days");
       cell([fit]);
