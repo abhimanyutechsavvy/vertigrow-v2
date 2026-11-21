@@ -8,15 +8,17 @@
 //
 // Set CONTROL_PIN in Vercel env vars so only people with the PIN can run pumps.
 
-import { pipeline, parse, str, defaultCtl, readBody, KEYS, clientIp, safeEqual, bump, peek, memLimit } from "./_store.js";
+import crypto from "crypto";
+import { pipeline, parse, str, defaultCtl, readBody, KEYS, clientIp, safeEqual, bump, peek, memLimit, foreignOrigin, publicCmd } from "./_store.js";
 
 const MAX_SECONDS = 30;
 
-// wrong-PIN protection: 5 wrong tries per IP -> 15 min lock; 30 wrong tries overall -> 15 min lock
-const IP_FAILS = 5, ALL_FAILS = 30, LOCK_SEC = 900;
+// wrong-PIN protection: 5 wrong tries per IP -> 15 min lock;
+// 50 wrong tries across the whole site in a day -> controls locked for the rest of that day
+const IP_FAILS = 5, IP_LOCK_SEC = 900, ALL_FAILS = 50, ALL_LOCK_SEC = 86400;
 
-// Arduino "long" is 32-bit, so keep IDs below 1,000,000,000 (never 0)
-const newId = () => (Date.now() % 1000000000) || 1;
+// random, unguessable IDs; Arduino "long" is 32-bit, so keep them below 1,000,000,000 (never 0)
+const newId = () => crypto.randomInt(1, 1000000000);
 
 async function getCtl() {
   const [raw] = await pipeline([["GET", KEYS.ctl]]);
@@ -30,10 +32,12 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const ctl = await getCtl();
-      return res.status(200).json({ mode: ctl.mode || "manual", cmd: ctl.cmd || null });
+      return res.status(200).json({ mode: ctl.mode || "manual", cmd: publicCmd(ctl.cmd) });
     }
 
     if (req.method !== "POST") return res.status(405).end();
+
+    if (foreignOrigin(req)) return res.status(403).json({ ok: false, error: "forbidden" });
 
     const ip = clientIp(req);
     if (!memLimit("cmd:" + ip, 20, 60000)) {
@@ -46,10 +50,12 @@ export default async function handler(req, res) {
       const ipKey = "vg:pinfail:" + ip, allKey = "vg:pinfail:all";
       const [ipFails, allFails] = await Promise.all([peek(ipKey), peek(allKey)]);
       if (ipFails >= IP_FAILS || allFails >= ALL_FAILS) {
-        return res.status(429).json({ ok: false, error: "too many wrong PIN tries, wait 15 minutes" });
+        return res.status(429).json({ ok: false, error: allFails >= ALL_FAILS
+          ? "controls locked for today after too many wrong PIN tries"
+          : "too many wrong PIN tries, wait 15 minutes" });
       }
       if (!safeEqual(b.pin || "", process.env.CONTROL_PIN)) {
-        if (b.pin) await Promise.all([bump(ipKey, LOCK_SEC), bump(allKey, LOCK_SEC)]);
+        if (b.pin) await Promise.all([bump(ipKey, IP_LOCK_SEC), bump(allKey, ALL_LOCK_SEC)]);
         return res.status(401).json({ ok: false, error: "need_pin" });
       }
     }
@@ -75,13 +81,13 @@ export default async function handler(req, res) {
       }
       const cmd = { id: newId(), action: "dose", pump, seconds, time: new Date().toISOString() };
       await setCtl({ ...ctl, cmd });
-      return res.status(200).json({ ok: true, cmd });
+      return res.status(200).json({ ok: true, cmd: publicCmd(cmd) });
     }
 
     if (b.action === "stop") {
       const cmd = { id: newId(), action: "stop", time: new Date().toISOString() };
       await setCtl({ ...ctl, cmd });
-      return res.status(200).json({ ok: true, cmd });
+      return res.status(200).json({ ok: true, cmd: publicCmd(cmd) });
     }
 
     return res.status(400).json({ ok: false, error: "unknown action" });
