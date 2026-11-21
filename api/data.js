@@ -7,10 +7,15 @@
 //   Dashboard GET: 3 commands
 // Works with the original Arduino sketch too (it only sends ph + tds).
 
-import { pipeline, parse, parseList, str, defaultCtl, readBody, usingDatabase, KEYS } from "./_store.js";
+import { pipeline, parse, parseList, str, defaultCtl, readBody, usingDatabase, KEYS, clientIp, safeEqual, clip, memLimit } from "./_store.js";
 
 const istDay = iso => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v)) ? null : Number(v));
+const num = v => {
+  if (v === null || v === undefined || v === "" || typeof v === "object") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(-1e6, Math.min(1e6, n)) : null;
+};
+const modeOf = v => (v === "auto" || v === "manual" ? v : null);
 const bool = v => v === true || v === "true" || v === 1;
 
 const HISTORY_MAX = 5000;   // ~1 week at one reading every 2 minutes
@@ -20,9 +25,10 @@ export default async function handler(req, res) {
   try {
     /* ================= ARDUINO SENDS DATA ================= */
     if (req.method === "POST") {
+      if (!memLimit("post:" + clientIp(req), 12, 60000)) return res.status(429).json({ error: "too many requests" });
       const b = readBody(req);
 
-      if (process.env.DEVICE_KEY && b.key !== process.env.DEVICE_KEY) {
+      if (process.env.DEVICE_KEY && !safeEqual(b.key || "", process.env.DEVICE_KEY)) {
         return res.status(401).json({ error: "bad device key" });
       }
 
@@ -41,8 +47,8 @@ export default async function handler(req, res) {
         remindMain: num(b.remindMain), remindNpk: num(b.remindNpk),
         pumpA: bool(b.pumpA),
         pumpB: bool(b.pumpB),
-        deviceMode: b.mode || null,
-        autoStatus: b.autoStatus || null,
+        deviceMode: modeOf(b.mode),
+        autoStatus: clip(b.autoStatus, 40),
         lastCmdId: num(b.lastCmdId)
       };
 
@@ -68,9 +74,12 @@ export default async function handler(req, res) {
         const fresh = [];
         for (const d of doses) {
           const pump = String(d.pump || "").toUpperCase();
-          if ((pump !== "A" && pump !== "B") || seen.has(String(d.id))) continue;
-          seen.add(String(d.id));
-          fresh.push(str({ id: d.id, time: record.time, pump, ml: num(d.ml) ?? 0, sec: num(d.sec) ?? 0, auto: bool(d.auto) }));
+          const did = String(clip(d.id, 20));
+          if ((pump !== "A" && pump !== "B") || seen.has(did)) continue;
+          seen.add(did);
+          fresh.push(str({ id: clip(d.id, 20), time: record.time, pump,
+                           ml: Math.max(0, Math.min(1000, num(d.ml) ?? 0)),
+                           sec: Math.max(0, Math.min(120, num(d.sec) ?? 0)), auto: bool(d.auto) }));
         }
         if (fresh.length) later.push(["LPUSH", KEYS.doses, ...fresh], ["LTRIM", KEYS.doses, "0", String(DOSES_MAX - 1)]);
       }
@@ -87,6 +96,7 @@ export default async function handler(req, res) {
 
     /* ================= DASHBOARD READS DATA ================= */
     if (req.method === "GET") {
+      if (!memLimit("get:" + clientIp(req), 120, 60000)) return res.status(429).json({ error: "too many requests" });
       const [latestRaw, ctlRaw, dosesRaw] = await pipeline([
         ["GET", KEYS.latest],
         ["GET", KEYS.ctl],
@@ -122,6 +132,6 @@ export default async function handler(req, res) {
     return res.status(405).end();
   } catch (err) {
     console.error("DATA ERROR:", err);
-    return res.status(500).json({ error: "data error", detail: err.message });
+    return res.status(500).json({ error: "data error" });
   }
 }
