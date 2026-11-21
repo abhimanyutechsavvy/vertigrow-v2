@@ -1,4 +1,4 @@
-import { readBody, clientIp, clip, bump, memLimit } from "./_store.js";
+import { readBody, clientIp, clip, bump, memLimit, foreignOrigin } from "./_store.js";
 
 export const config = {
   runtime: "nodejs"
@@ -22,6 +22,8 @@ export default async function handler(req, res) {
     if (!process.env.OPENAI_API_KEY) {
       return res.status(200).json({ reply: "AI NOT CONFIGURED" });
     }
+
+    if (foreignOrigin(req)) return res.status(403).json({ reply: "Forbidden" });
 
     const ip = clientIp(req);
     if (!memLimit("ai:" + ip, PER_IP_PER_MIN, 60000)) {
