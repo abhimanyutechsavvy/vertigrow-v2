@@ -104,6 +104,16 @@ export async function peek(key) {
   return Number(v) || 0;
 }
 
+// block requests sent from other websites' pages (the Arduino sends no Origin header)
+export function foreignOrigin(req) {
+  const o = req.headers.origin;
+  if (!o) return false;
+  try { return new URL(o).host !== req.headers.host; } catch { return true; }
+}
+
+// what the public may see about a pending command (never its id)
+export const publicCmd = c => (c ? { action: c.action, pump: c.pump || null, seconds: c.seconds || null, time: c.time } : null);
+
 // Vercel normally parses JSON bodies, but be safe if it arrives as text
 export function readBody(req) {
   if (!req.body) return {};
