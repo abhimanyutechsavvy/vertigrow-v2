@@ -7,7 +7,7 @@
 //   Dashboard GET: 3 commands
 // Works with the original Arduino sketch too (it only sends ph + tds).
 
-import { pipeline, parse, parseList, str, defaultCtl, readBody, usingDatabase, KEYS, clientIp, safeEqual, clip, memLimit } from "./_store.js";
+import { pipeline, parse, parseList, str, defaultCtl, readBody, usingDatabase, KEYS, clientIp, safeEqual, clip, memLimit, publicCmd } from "./_store.js";
 
 const istDay = iso => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const num = v => {
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ...latest,
         mode: ctl.mode || "manual",
-        pendingCmd: ctl.cmd || null,
+        pendingCmd: publicCmd(ctl.cmd),
         doseToday,
         recentDoses: doses.slice(0, 6),
         online,
