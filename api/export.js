@@ -6,7 +6,11 @@ import XLSX from "xlsx";
 import { pipeline, parse, parseList, KEYS, clientIp, memLimit } from "./_store.js";
 
 const yesNo = v => (v ? "Yes" : "No");
-const val = v => (v === null || v === undefined ? "" : v);
+const val = v => {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(v)) return "'" + v;   // never let text act as a formula
+  return v;
+};
 
 function health(r) {
   const phGood = r.ph >= 5.8 && r.ph <= 6.5, tdsGood = r.tds >= 800 && r.tds <= 1200;
