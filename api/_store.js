@@ -1,3 +1,4 @@
+import crypto from "crypto";
 // /api/_store.js  (files starting with "_" are helpers, not API routes)
 //
 // Saves VertiGrow data in Upstash Redis (Vercel -> Storage -> Upstash Redis).
@@ -26,7 +27,10 @@ function runInMemory(cmds) {
   return cmds.map(([op, key, ...a]) => {
     switch (op) {
       case "GET": return mem.kv[key] ?? null;
-      case "SET": mem.kv[key] = a[0]; return "OK";
+      case "SET":
+        if (a.includes("NX") && mem.kv[key] !== undefined) return null;
+        mem.kv[key] = a[0]; return "OK";
+      case "INCR": mem.kv[key] = String((parseInt(mem.kv[key] || "0", 10) || 0) + 1); return +mem.kv[key];
       case "DEL": delete mem.kv[key]; return 1;
       case "LPUSH": { const l = (mem.lists[key] = mem.lists[key] || []); l.unshift(...a); return l.length; }
       case "LTRIM": { const l = mem.lists[key] || []; mem.lists[key] = l.slice(+a[0], +a[1] + 1); return "OK"; }
@@ -61,6 +65,44 @@ export const parseList = items => (items || []).map(s => parse(s)).filter(Boolea
 export const str = v => JSON.stringify(v);
 
 export const defaultCtl = () => ({ mode: "manual", cmd: null });
+
+/* ---------------- security helpers ---------------- */
+// caller's IP as Vercel reports it
+export function clientIp(req) {
+  const f = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return (f || req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown").slice(0, 64);
+}
+
+// cut text to a safe length (and make sure it is text)
+export const clip = (v, n) => (v === null || v === undefined ? null : String(v).slice(0, n));
+
+// compare secrets without leaking timing
+export function safeEqual(a, b) {
+  const x = crypto.createHash("sha256").update(String(a)).digest();
+  const y = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
+}
+
+// cheap per-instance limiter (no database cost): true = allowed
+const hits = (globalThis.__VG_HITS__ = globalThis.__VG_HITS__ || new Map());
+export function memLimit(key, max, windowMs) {
+  const now = Date.now();
+  let h = hits.get(key);
+  if (!h || now > h.reset) { h = { n: 0, reset: now + windowMs }; hits.set(key, h); }
+  h.n++;
+  if (hits.size > 5000) for (const [k, v] of hits) if (now > v.reset) hits.delete(k);
+  return h.n <= max;
+}
+
+// shared counter in Redis with a time window; returns the new count
+export async function bump(key, windowSec) {
+  const out = await pipeline([["SET", key, "0", "EX", String(windowSec), "NX"], ["INCR", key]]);
+  return Number(out[1]) || 0;
+}
+export async function peek(key) {
+  const [v] = await pipeline([["GET", key]]);
+  return Number(v) || 0;
+}
 
 // Vercel normally parses JSON bodies, but be safe if it arrives as text
 export function readBody(req) {
