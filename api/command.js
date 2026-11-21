@@ -8,9 +8,12 @@
 //
 // Set CONTROL_PIN in Vercel env vars so only people with the PIN can run pumps.
 
-import { pipeline, parse, str, defaultCtl, readBody, KEYS } from "./_store.js";
+import { pipeline, parse, str, defaultCtl, readBody, KEYS, clientIp, safeEqual, bump, peek, memLimit } from "./_store.js";
 
 const MAX_SECONDS = 30;
+
+// wrong-PIN protection: 5 wrong tries per IP -> 15 min lock; 30 wrong tries overall -> 15 min lock
+const IP_FAILS = 5, ALL_FAILS = 30, LOCK_SEC = 900;
 
 // Arduino "long" is 32-bit, so keep IDs below 1,000,000,000 (never 0)
 const newId = () => (Date.now() % 1000000000) || 1;
@@ -32,10 +35,23 @@ export default async function handler(req, res) {
 
     if (req.method !== "POST") return res.status(405).end();
 
+    const ip = clientIp(req);
+    if (!memLimit("cmd:" + ip, 20, 60000)) {
+      return res.status(429).json({ ok: false, error: "too many requests, wait a minute" });
+    }
+
     const b = readBody(req);
 
-    if (process.env.CONTROL_PIN && String(b.pin || "") !== String(process.env.CONTROL_PIN)) {
-      return res.status(401).json({ ok: false, error: "need_pin" });
+    if (process.env.CONTROL_PIN) {
+      const ipKey = "vg:pinfail:" + ip, allKey = "vg:pinfail:all";
+      const [ipFails, allFails] = await Promise.all([peek(ipKey), peek(allKey)]);
+      if (ipFails >= IP_FAILS || allFails >= ALL_FAILS) {
+        return res.status(429).json({ ok: false, error: "too many wrong PIN tries, wait 15 minutes" });
+      }
+      if (!safeEqual(b.pin || "", process.env.CONTROL_PIN)) {
+        if (b.pin) await Promise.all([bump(ipKey, LOCK_SEC), bump(allKey, LOCK_SEC)]);
+        return res.status(401).json({ ok: false, error: "need_pin" });
+      }
     }
 
     const ctl = await getCtl();
@@ -71,6 +87,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "unknown action" });
   } catch (err) {
     console.error("COMMAND ERROR:", err);
-    return res.status(500).json({ ok: false, error: "command error", detail: err.message });
+    return res.status(500).json({ ok: false, error: "command error" });
   }
 }
