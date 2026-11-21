@@ -3,7 +3,7 @@
 // History needs the Upstash Redis database; without it only the latest reading is exported.
 
 import XLSX from "xlsx";
-import { pipeline, parse, parseList, KEYS } from "./_store.js";
+import { pipeline, parse, parseList, KEYS, clientIp, memLimit } from "./_store.js";
 
 const yesNo = v => (v ? "Yes" : "No");
 const val = v => (v === null || v === undefined ? "" : v);
@@ -21,6 +21,7 @@ function health(r) {
 export default async function handler(req, res) {
   try {
     if (req.method !== "GET") return res.status(405).end();
+    if (!memLimit("export:" + clientIp(req), 6, 60000)) return res.status(429).send("Too many downloads - wait a minute and try again.");
 
     const [histRaw, latestRaw, dosesRaw] = await pipeline([
       ["LRANGE", KEYS.history, "0", "4999"],
